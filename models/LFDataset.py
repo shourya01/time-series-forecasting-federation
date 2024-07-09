@@ -1,5 +1,6 @@
+# here we write some basic code which allows the creation of a dataloader
+
 import torch
-import numpy as np
 from torch.utils.data import Dataset
 from typing import Union, List, Tuple
 from itertools import combinations
@@ -40,8 +41,9 @@ class LFDataset(Dataset):
             u_past = torch.tensor(self.data[tidx:tidx+lookback,idx_u], dtype=self.dtype)
             s_past = torch.tensor(self.data[tidx:tidx+lookback,idx_s], dtype=self.dtype)
             y_target = torch.tensor(self.data[tidx+lookback+lookahead-1,idx_y], dtype=self.dtype)
+            y_all_target = torch.tensor(self.data[tidx+lookback:tidx+lookback+lookahead,idx_y], dtype = dtype)
             u_future = torch.tensor(self.data[tidx:tidx+lookback:tidx+lookback+lookahead,idx_u], dtype=self.dtype)
-            self.records.append((y_past,x_past,u_past,s_past,y_target,u_future))
+            self.records.append((y_past,x_past,u_past,s_past,y_target,y_all_target,u_future))
         
     def __len__(self):
         
@@ -50,8 +52,8 @@ class LFDataset(Dataset):
     def __getitem__(self, idx):
         
         record = self.records[idx]
-        y_past, x_past, u_past, s_past, y_target, u_future = record
+        y_past, x_past, u_past, s_past, y_target, y_all_target, u_future = record
         inp = (y_past,x_past,u_past,s_past,u_future)
-        lab = y_target
+        lab = (y_target, y_all_target)
         
         return inp, lab
