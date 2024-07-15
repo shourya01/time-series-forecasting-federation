@@ -1,0 +1,2 @@
+     Round LocalEpoch PerIter[s]  TrainLoss  TrainAccu   TestLoss   TestAccu 
+         0          0       2.16     0.0000     0.0000    41.7677  3336.6372 
