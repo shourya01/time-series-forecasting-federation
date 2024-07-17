@@ -81,7 +81,7 @@ class LSTMAR(nn.Module):
     def forward(self,x):
         
         # extract components
-        y_past, x_past, u_past, s_past, u_future = x
+        y_past, x_past, u_past, s_past, u_future, _ = x
         inp = torch.cat([y_past,x_past,u_past,s_past],dim=2)
         B, dev = inp.shape[0], inp.device
         

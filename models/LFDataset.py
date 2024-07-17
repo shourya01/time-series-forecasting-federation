@@ -107,7 +107,7 @@ class LFDataset(Dataset):
         y_target = torch.tensor(self.load[idx+self.lookback+self.lookahead-1].reshape((1,)), dtype=self.dtype)
         y_all_target = torch.tensor(self.load[idx+self.lookback:idx+self.lookback+self.lookahead][:,None], dtype=self.dtype)
         
-        inp = TensorList((y_past,x_past,u_past,s_past,u_future))
+        inp = TensorList((y_past,x_past,u_past,s_past,u_future,y_all_target)) # last one is for teacher forcing during training
         lab = TensorList((y_target, y_all_target))
         
         return inp, lab

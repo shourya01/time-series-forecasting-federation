@@ -50,6 +50,10 @@ parser.add_argument("--server", type=str, default="ServerFedAvg")
 parser.add_argument("--num_epochs", type=int, default=5)
 parser.add_argument("--server_lr", type=float, default=0.1)
 
+## saving mode
+parser.add_argument("--save_model", action="store_true")
+parser.add_argument("--save_frequency", type=int, default=5)
+
 ## parse
 args = parser.parse_args()
     
@@ -144,6 +148,14 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
     ## Disable validation
     if not args.do_validation:
         cfg.validation = False
+        
+    ## Model save configuration
+    if args.save_model:
+        cfg.save_model = True
+        cfg.save_model_state_dict = True
+        cfg.save_model_dirname = cfg.output_dirname
+        cfg.checkpoints_interval = args.save_frequency
+        
     
     ## Running
     if comm_rank == 0:
