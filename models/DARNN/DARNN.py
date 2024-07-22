@@ -1,7 +1,8 @@
-import os, sys
 import torch
 import torch.nn as nn
-from typing import Union, List, Tuple
+
+# paper:
+# https://arxiv.org/abs/1704.02971
 
 class DARNN(nn.Module):
     
@@ -11,12 +12,12 @@ class DARNN(nn.Module):
         y_size: int,
         u_size: int,
         s_size: int,
-        encoder_hidden_size: int,
-        decoder_hidden_size: int,
-        encoder_num_layers: int,
-        decoder_num_layers: int,
-        lookback: int,
-        lookahead: int,
+        encoder_hidden_size: int = 20,
+        decoder_hidden_size: int = 20,
+        encoder_num_layers: int = 2,
+        decoder_num_layers: int = 2,
+        lookback: int = 8,
+        lookahead: int = 4,
         dtype: torch.dtype = torch.float32
     ):
         

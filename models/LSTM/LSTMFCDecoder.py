@@ -7,15 +7,17 @@ class LSTMFCDecoder(nn.Module):
     
     def __init__(
         self,
-        input_size: int,
-        hidden_size: int,
-        num_layers: int,
+        x_size: int,
         y_size: int,
-        fcnn_sizes: Union[List,Tuple],
-        activation: nn.Module,
-        lookback: int,
-        lookahead: int,
-        dtype: torch.dtype
+        u_size: int,
+        s_size: int,
+        hidden_size: int = 20,
+        num_layers: int = 2,
+        fcnn_sizes: Union[List,Tuple] = (160,80,10,1),
+        activation: nn.Module = nn.ReLU,
+        lookback: int = 8,
+        lookahead: int = 4,
+        dtype: torch.dtype = torch.float32
     ):
         
         super(LSTMFCDecoder,self).__init__()
@@ -27,13 +29,13 @@ class LSTMFCDecoder(nn.Module):
         assert lookahead > 0, "Cannot have non-positive lookahead."
         
         # save values for use outside init
-        self.input_size = input_size
+        self.input_size = x_size + y_size + u_size + s_size
         self.hidden_size, self.num_layers = hidden_size, num_layers
         self.dtype = dtype
         
         # lstm
         self.lstm = nn.LSTM(
-            input_size = input_size,
+            input_size = self.input_size,
             hidden_size = hidden_size,
             num_layers = num_layers,
             bias = True,
@@ -42,7 +44,7 @@ class LSTMFCDecoder(nn.Module):
             bidirectional = False,
             proj_size = 0,
             device = None,
-            dtype = dtype
+            dtype = self.dtype
         )
         
         # fcnn

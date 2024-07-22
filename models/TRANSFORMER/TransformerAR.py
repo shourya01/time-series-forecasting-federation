@@ -9,6 +9,9 @@ import math
 # (from the encoder's output).
 # The runtime of transformer is O(input_seq_len*target_seq_len)
 
+# paper:
+# https://arxiv.org/abs/1706.03762
+
 class TransformerAR(nn.Module):
     def __init__(
         self, 
@@ -43,8 +46,8 @@ class TransformerAR(nn.Module):
         self.target_projection = nn.Linear(target_dim, model_dim, dtype=dtype)
         self.output_projection = nn.Linear(model_dim, target_dim, dtype=dtype)
         self.register_buffer('positional_encoding', self.create_sinusoidal_encoding(max(input_seq_len, target_seq_len), model_dim))
-        encoder_layer = nn.TransformerEncoderLayer(d_model=model_dim, nhead=num_heads, batch_first=True, dtype=dtype)
-        decoder_layer = nn.TransformerDecoderLayer(d_model=model_dim, nhead=num_heads, batch_first=True, dtype=dtype)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=model_dim, nhead=num_heads, dim_feedforward=4*model_dim, batch_first=True, dtype=dtype)
+        decoder_layer = nn.TransformerDecoderLayer(d_model=model_dim, nhead=num_heads, dim_feedforward=4*model_dim, batch_first=True, dtype=dtype)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoder_layers)
 
@@ -76,7 +79,7 @@ class TransformerAR(nn.Module):
             # For training, use teacher forcing
             # Create relevant target
             tgt0 = torch.cat([y_target,u_future],dim=-1)
-            tgt_pad = torch.zeros(tgt0.shape[0],1,tgt0.shape[2], dtype=self.dtype)
+            tgt_pad = torch.zeros(tgt0.shape[0],1,tgt0.shape[2], dtype=self.dtype, device=tgt0.device)
             tgt = torch.cat([tgt_pad,tgt0],dim=1)
             # now use this target
             tgt = self.target_projection(tgt)
