@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import numpy as np
 from math import sqrt, log
 
+# paper - https://arxiv.org/abs/2012.07436
+# code lightly modified from - https://github.com/zhouhaoyi/Informer2020
+
 class ProbMask():
     def __init__(self, B, H, L, index, scores, device="cpu"):
         _mask = torch.ones(L, scores.shape[-1], dtype=torch.bool).to(device).triu(1)
@@ -434,9 +437,15 @@ class Informer(nn.Module):
         
         super(Informer, self).__init__()
         
-        enc_in, dec_in = x_size + y_size + u_size + s_size, u_size
+        enc_in = x_size + y_size + u_size + s_size
+        dec_in = enc_in
         c_out = y_size
-        seq_len, dec_len, out_len = lookback, lookahead, lookahead
+        seq_len, dec_len, out_len = lookback, lookback//2 + lookahead, lookahead
+        
+        # values to store
+        self.dtype = dtype
+        self.lookback, self.lookahead = lookback, lookahead
+        self.x_size, self.y_size, self.u_size = x_size, y_size, u_size
         
         self.informer = InformerBase(
             enc_in = enc_in,
@@ -456,7 +465,14 @@ class Informer(nn.Module):
                 
     def forward(self, x):
         
-        y_past, x_past, u_past, s_past, u_future, _ = x
+        y_past, x_past, u_past, s_past, u_future , _ = x
         enc_inp = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
+        dec_inp = torch.cat([
+            enc_inp[:,-(self.lookback//2):,:],
+            torch.zeros(enc_inp.shape[0],self.lookahead,enc_inp.shape[2], dtype=self.dtype, device=enc_inp.device)
+        ], dim=1)
         
-        return self.informer(enc_inp,u_future)
+        # retcon u_future into the decoder inputs
+        dec_inp[:,-self.lookahead:,self.x_size+self.y_size:self.x_size+self.y_size+self.u_size] = u_future
+        
+        return self.informer(enc_inp,dec_inp)
