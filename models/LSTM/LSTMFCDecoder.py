@@ -13,7 +13,7 @@ class LSTMFCDecoder(nn.Module):
         s_size: int,
         hidden_size: int = 20,
         num_layers: int = 2,
-        fcnn_sizes: Union[List,Tuple] = (160,80,10,1),
+        fcnn_sizes: Union[List,Tuple] = (240,80,10,1),
         activation: nn.Module = nn.ReLU,
         lookback: int = 8,
         lookahead: int = 4,

@@ -2,35 +2,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-from math import sqrt, log
+from math import log
 
-# paper - https://arxiv.org/pdf/2106.13008
-# code (with many bugfixes for float16) from https://github.com/MAZiqing/FEDformer/blob/master/models/Autoformer.py
+class my_Layernorm(nn.Module):
+    """
+    Special designed layernorm for the seasonal part
+    """
+    def __init__(self, channels, dtype=torch.float32):
+        super(my_Layernorm, self).__init__()
+        self.layernorm = nn.LayerNorm(channels, dtype=dtype)
 
-def next_power_of_two(x):
-    return 1 if x == 0 else 2**(x - 1).bit_length()
-
-def pad_to_power_of_two(tensor):
-    last_dim_size = tensor.size(-1)
-    if (last_dim_size & (last_dim_size - 1)) != 0:
-        padded_size = next_power_of_two(last_dim_size)
-        pad_amount = padded_size - last_dim_size
-        return torch.nn.functional.pad(tensor, (0, pad_amount)), padded_size
-    return tensor, last_dim_size
-
-def rfft_with_padding(input_tensor):
-    padded_tensor, padded_size = pad_to_power_of_two(input_tensor)
-    rfft_output = torch.fft.rfft(padded_tensor, dim=-1)
-    return rfft_output[..., :input_tensor.size(-1)//2 + 1]
-
-def irfft_with_padding(input_tensor):
-    if input_tensor.dtype == torch.complex32:
-        original_signal_length = (input_tensor.size(-1) - 1) * 2
-        padded_size = next_power_of_two(original_signal_length)
-        padded_tensor = torch.nn.functional.pad(input_tensor, (0, (padded_size // 2 + 1) - input_tensor.size(-1)))
-        return torch.fft.irfft(padded_tensor, n=padded_size, dim=-1)
-    else:
-        return torch.fft.irfft(input_tensor, dim=-1)
+    def forward(self, x):
+        x_hat = self.layernorm(x)
+        bias = torch.mean(x_hat, dim=1).unsqueeze(1).repeat(1, x.shape[1], 1)
+        return x_hat - bias
 
 
 class moving_avg(nn.Module):
@@ -50,7 +35,8 @@ class moving_avg(nn.Module):
         x = self.avg(x.permute(0, 2, 1))
         x = x.permute(0, 2, 1)
         return x
-    
+
+
 class series_decomp(nn.Module):
     """
     Series decomposition block
@@ -63,6 +49,7 @@ class series_decomp(nn.Module):
         moving_mean = self.moving_avg(x)
         res = x - moving_mean
         return res, moving_mean
+
 
 class series_decomp_multi(nn.Module):
     """
@@ -87,7 +74,7 @@ class EncoderLayer(nn.Module):
     """
     Autoformer encoder layer with the progressive decomposition architecture
     """
-    def __init__(self, attention, d_model, d_ff=None, moving_avg=25, activation="relu", dtype=torch.float32):
+    def __init__(self, attention, d_model, d_ff=None, moving_avg=25, dropout=0.1, activation="relu", dtype=torch.float32):
         super(EncoderLayer, self).__init__()
         d_ff = d_ff or 4 * d_model
         self.attention = attention
@@ -95,12 +82,13 @@ class EncoderLayer(nn.Module):
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False, dtype=dtype)
 
         if isinstance(moving_avg, list):
-            self.decomp1 = series_decomp_multi(moving_avg, dtype)
-            self.decomp2 = series_decomp_multi(moving_avg, dtype)
+            self.decomp1 = series_decomp_multi(moving_avg, dtype=dtype)
+            self.decomp2 = series_decomp_multi(moving_avg, dtype=dtype)
         else:
             self.decomp1 = series_decomp(moving_avg)
             self.decomp2 = series_decomp(moving_avg)
 
+        self.dropout = nn.Dropout(dropout)
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, attn_mask=None):
@@ -108,14 +96,15 @@ class EncoderLayer(nn.Module):
             x, x, x,
             attn_mask=attn_mask
         )
-        x = x + new_x
+        x = x + self.dropout(new_x)
         x, _ = self.decomp1(x)
         y = x
-        y = self.activation(self.conv1(y.transpose(-1, 1)))
-        y = self.conv2(y).transpose(-1, 1)
+        y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
+        y = self.dropout(self.conv2(y).transpose(-1, 1))
         res, _ = self.decomp2(x + y)
         return res, attn
-    
+
+
 class Encoder(nn.Module):
     """
     Autoformer encoder
@@ -144,13 +133,14 @@ class Encoder(nn.Module):
             x = self.norm(x)
 
         return x, attns
-    
+
+
 class DecoderLayer(nn.Module):
     """
     Autoformer decoder layer with the progressive decomposition architecture
     """
     def __init__(self, self_attention, cross_attention, d_model, c_out, d_ff=None,
-                 moving_avg=25, activation="relu", dtype=torch.float32):
+                 moving_avg=25, dropout=0.1, activation="relu", dtype=torch.float32):
         super(DecoderLayer, self).__init__()
         d_ff = d_ff or 4 * d_model
         self.self_attention = self_attention
@@ -159,34 +149,35 @@ class DecoderLayer(nn.Module):
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False, dtype=dtype)
 
         if isinstance(moving_avg, list):
-            self.decomp1 = series_decomp_multi(moving_avg, dtype)
-            self.decomp2 = series_decomp_multi(moving_avg, dtype)
-            self.decomp3 = series_decomp_multi(moving_avg, dtype)
+            self.decomp1 = series_decomp_multi(moving_avg, dtype=dtype)
+            self.decomp2 = series_decomp_multi(moving_avg, dtype=dtype)
+            self.decomp3 = series_decomp_multi(moving_avg, dtype=dtype)
         else:
             self.decomp1 = series_decomp(moving_avg)
             self.decomp2 = series_decomp(moving_avg)
             self.decomp3 = series_decomp(moving_avg)
 
+        self.dropout = nn.Dropout(dropout)
         self.projection = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=3, stride=1, padding=1,
                                     padding_mode='circular', bias=False, dtype=dtype)
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, cross, x_mask=None, cross_mask=None):
-        x = x + self.self_attention(
+        x = x + self.dropout(self.self_attention(
             x, x, x,
             attn_mask=x_mask
-        )[0]
+        )[0])
 
         x, trend1 = self.decomp1(x)
-        x = x + self.cross_attention(
+        x = x + self.dropout(self.cross_attention(
             x, cross, cross,
             attn_mask=cross_mask
-        )[0]
+        )[0])
 
         x, trend2 = self.decomp2(x)
         y = x
-        y = self.activation(self.conv1(y.transpose(-1, 1)))
-        y = self.conv2(y).transpose(-1, 1)
+        y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
+        y = self.dropout(self.conv2(y).transpose(-1, 1))
         x, trend3 = self.decomp3(x + y)
 
         residual_trend = trend1 + trend2 + trend3
@@ -215,57 +206,6 @@ class Decoder(nn.Module):
         if self.projection is not None:
             x = self.projection(x)
         return x, trend
-
-class TriangularCausalMask():
-    def __init__(self, B, L, device="cpu"):
-        mask_shape = [B, 1, L, L]
-        with torch.no_grad():
-            self._mask = torch.triu(torch.ones(mask_shape, dtype=torch.bool), diagonal=1).to(device)
-
-    @property
-    def mask(self):
-        return self._mask
-
-class FullAttention(nn.Module):
-    def __init__(self, mask_flag=True, factor=5, scale=None, output_attention=False):
-        super(FullAttention, self).__init__()
-        self.scale = scale
-        self.mask_flag = mask_flag
-        self.output_attention = output_attention
-
-    def forward(self, queries, keys, values, attn_mask):
-        B, L, H, E = queries.shape
-        _, S, _, D = values.shape
-        scale = self.scale or 1. / sqrt(E)
-
-        scores = torch.einsum("blhe,bshe->bhls", queries, keys)
-
-        if self.mask_flag:
-            if attn_mask is None:
-                attn_mask = TriangularCausalMask(B, L, device=queries.device)
-
-            scores.masked_fill_(attn_mask.mask, -np.inf)
-
-        A = torch.softmax(scale * scores, dim=-1)
-        V = torch.einsum("bhls,bshd->blhd", A, values)
-
-        if self.output_attention:
-            return (V.contiguous(), A)
-        else:
-            return (V.contiguous(), None)
-
-class my_Layernorm(nn.Module):
-    """
-    Special designed layernorm for the seasonal part
-    """
-    def __init__(self, channels, dtype=torch.float32):
-        super(my_Layernorm, self).__init__()
-        self.layernorm = nn.LayerNorm(channels, dtype=dtype)
-
-    def forward(self, x):
-        x_hat = self.layernorm(x)
-        bias = torch.mean(x_hat, dim=1).unsqueeze(1).repeat(1, x.shape[1], 1)
-        return x_hat - bias
     
 class AutoCorrelation(nn.Module):
     """
@@ -274,12 +214,13 @@ class AutoCorrelation(nn.Module):
     (2) time delay aggregation
     This block can replace the self-attention family mechanism seamlessly.
     """
-    def __init__(self, mask_flag=True, factor=1, scale=None, output_attention=False):
+    def __init__(self, mask_flag=True, factor=1, scale=None, attention_dropout=0.1, output_attention=False, configs=None):
         super(AutoCorrelation, self).__init__()
         self.factor = factor
         self.scale = scale
         self.mask_flag = mask_flag
         self.output_attention = output_attention
+        self.dropout = nn.Dropout(attention_dropout)
         self.agg = None
         # self.use_wavelet = configs.wavelet
 
@@ -293,7 +234,7 @@ class AutoCorrelation(nn.Module):
         channel = values.shape[2]
         length = values.shape[3]
         # find top k
-        top_k = int(self.factor * math.log(length))
+        top_k = int(self.factor * log(length))
         mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)
         index = torch.topk(torch.mean(mean_value, dim=0), top_k, dim=-1)[1]
         weights = torch.stack([mean_value[:, index[i]] for i in range(top_k)], dim=-1)
@@ -309,7 +250,7 @@ class AutoCorrelation(nn.Module):
         return delays_agg  # size=[B, H, d, S]
 
     def time_delay_agg_inference(self, values, corr):
-        """     
+        """
         SpeedUp version of Autocorrelation (a batch-normalization style design)
         This is for the inference phase.
         """
@@ -320,7 +261,7 @@ class AutoCorrelation(nn.Module):
         # index init
         init_index = torch.arange(length).unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(batch, head, channel, 1).cuda()
         # find top k
-        top_k = int(self.factor * math.log(length))
+        top_k = int(self.factor * log(length))
         mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)
         weights = torch.topk(mean_value, top_k, dim=-1)[0]
         delay = torch.topk(mean_value, top_k, dim=-1)[1]
@@ -373,10 +314,10 @@ class AutoCorrelation(nn.Module):
             keys = keys[:, :L, :, :]
 
         # period-based dependencies
-        q_fft = rfft_with_padding(queries.permute(0, 2, 3, 1).contiguous())
-        k_fft = rfft_with_padding(keys.permute(0, 2, 3, 1).contiguous())
+        q_fft = torch.fft.rfft(queries.permute(0, 2, 3, 1).contiguous(), dim=-1)
+        k_fft = torch.fft.rfft(keys.permute(0, 2, 3, 1).contiguous(), dim=-1)
         res = q_fft * torch.conj(k_fft)
-        corr = irfft_with_padding(res)
+        corr = torch.fft.irfft(res, dim=-1)
 
         # time delay agg
         if self.training:
@@ -422,11 +363,7 @@ class AutoCorrelationLayer(nn.Module):
         )
 
         out = out.view(B, L, -1)
-        
-        # hacky fix to dtype error when torch.float16, to be investigated indepth later
-        target_dtype_for_out = self.out_projection.weight.dtype
-        
-        return self.out_projection(out.to(target_dtype_for_out)), attn
+        return self.out_projection(out), attn
     
 class TokenEmbedding(nn.Module):
     def __init__(self, c_in, d_model, dtype=torch.float32):
@@ -441,6 +378,17 @@ class TokenEmbedding(nn.Module):
     def forward(self, x):
         x = self.tokenConv(x.permute(0, 2, 1)).transpose(1,2)
         return x
+    
+class DataEmbedding(nn.Module):
+    def __init__(self, c_in, d_model, dropout=0.1, dtype=torch.float32):
+        super(DataEmbedding, self).__init__()
+        self.token_embedding = TokenEmbedding(c_in, d_model, dtype=dtype)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        token_emb = self.token_embedding(x)
+        return self.dropout(token_emb)
+
 
 class AutoformerBase(nn.Module):
     """
@@ -464,11 +412,13 @@ class AutoformerBase(nn.Module):
         d_layers = 2,
         e_layers = 2,
         activation = 'gelu',
+        dropout = 0.1,
         dtype: torch.dtype = torch.float32
     ):
+        
         super(AutoformerBase, self).__init__()
         self.seq_len = seq_len
-        self.dec_len = dec_len
+        self.label_len = dec_len
         self.pred_len = pred_len
         self.output_attention = output_attention
         self.dtype = dtype
@@ -483,22 +433,23 @@ class AutoformerBase(nn.Module):
         # Embedding
         # The series-wise connection inherently contains the sequential information.
         # Thus, we can discard the position embedding of transformers.
-        self.enc_embedding = TokenEmbedding(enc_in, d_model, dtype=dtype)
-        self.dec_embedding = TokenEmbedding(dec_in, d_model, dtype=dtype)
+        self.enc_embedding = DataEmbedding(enc_in, d_model, dropout=dropout, dtype=dtype)
+        self.dec_embedding = DataEmbedding(dec_in, d_model, dropout=dropout, dtype=dtype)
 
         # Encoder
         self.encoder = Encoder(
             [
                 EncoderLayer(
                     AutoCorrelationLayer(
-                        AutoCorrelation(False, factor,
+                        AutoCorrelation(False, factor, attention_dropout=dropout,
                                         output_attention=output_attention),
                         d_model, n_heads, dtype=dtype),
                     d_model,
                     d_ff,
                     moving_avg=moving_avg,
+                    dropout=dropout,
                     activation=activation,
-                    dtype = dtype
+                    dtype=dtype
                 ) for l in range(e_layers)
             ],
             norm_layer=my_Layernorm(d_model, dtype=dtype)
@@ -508,19 +459,20 @@ class AutoformerBase(nn.Module):
             [
                 DecoderLayer(
                     AutoCorrelationLayer(
-                        AutoCorrelation(True, factor,
+                        AutoCorrelation(True, factor, attention_dropout=dropout,
                                         output_attention=False),
-                        d_model, n_heads, dtype = dtype),
+                        d_model, n_heads, dtype=dtype),
                     AutoCorrelationLayer(
-                        AutoCorrelation(False, factor,
+                        AutoCorrelation(False, factor, attention_dropout=dropout,
                                         output_attention=False),
                         d_model, n_heads, dtype=dtype),
                     d_model,
                     c_out,
                     d_ff,
                     moving_avg=moving_avg,
+                    dropout=dropout,
                     activation=activation,
-                    dtype = dtype
+                    dtype=dtype
                 )
                 for l in range(d_layers)
             ],
@@ -528,15 +480,14 @@ class AutoformerBase(nn.Module):
             projection=nn.Linear(d_model, c_out, bias=True, dtype=dtype)
         )
 
-    def forward(self, x_enc, x_dec,
+    def forward(self, x_enc,
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
         # decomp init
         mean = torch.mean(x_enc, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
-        zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], dtype=self.dtype, device=x_enc.device)
         seasonal_init, trend_init = self.decomp(x_enc)
         # decoder input
-        trend_init = torch.cat([trend_init[:, -self.dec_len:, :], mean], dim=1)
-        seasonal_init = torch.cat([seasonal_init[:, -self.dec_len:, :], zeros], dim=1)
+        trend_init = torch.cat([trend_init[:, -self.label_len:, :], mean], dim=1)
+        seasonal_init = F.pad(seasonal_init[:, -self.label_len:, :], (0, 0, 0, self.pred_len))
         # enc
         enc_out = self.enc_embedding(x_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
@@ -602,14 +553,7 @@ class Autoformer(nn.Module):
                 
     def forward(self, x):
         
-        y_past, x_past, u_past, s_past, u_future , _ = x
+        y_past, x_past, u_past, s_past, _ , _ = x
         enc_inp = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
-        dec_inp = torch.cat([
-            enc_inp[:,-(self.lookback//2):,:],
-            torch.zeros(enc_inp.shape[0],self.lookahead,enc_inp.shape[2], dtype=self.dtype, device=enc_inp.device)
-        ], dim=1)
         
-        # retcon u_future into the decoder inputs
-        dec_inp[:,-self.lookahead:,self.x_size+self.y_size:self.x_size+self.y_size+self.u_size] = u_future
-        
-        return self.autoformer(enc_inp,dec_inp)[:,:,:self.y_size] # only output the y's
+        return self.autoformer(enc_inp)[:,:,:self.y_size] # only output the y's

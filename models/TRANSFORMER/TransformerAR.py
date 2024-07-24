@@ -63,7 +63,7 @@ class TransformerAR(nn.Module):
         mask = torch.triu(torch.ones(sz, sz, dtype=self.dtype, device=self.positional_encoding.device) * float('-inf'), diagonal=1)
         return mask
 
-    def forward(self, x, mode='train'):
+    def forward(self, x):
         
         # extract data
         y_past, x_past, u_past, s_past, u_future, y_target = x
@@ -75,7 +75,7 @@ class TransformerAR(nn.Module):
         src += self.positional_encoding[:, :src.size(1), :]
         memory = self.transformer_encoder(src)
 
-        if mode == 'train':
+        if self.training:
             # For training, use teacher forcing
             # Create relevant target
             tgt0 = torch.cat([y_target,u_future],dim=-1)
@@ -87,21 +87,18 @@ class TransformerAR(nn.Module):
             tgt_mask = self.generate_square_subsequent_mask(tgt.size(1))
             output = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask)
         else:
-            if mode == 'test':
-                # For testing, use autoregression
-                output = torch.zeros((src.size(0), self.target_seq_len, self.model_dim), dtype=self.dtype, device=src.device)
-                for i in range(self.target_seq_len):
-                    tgt = output[:, :i+1, :]
-                    tgt += self.positional_encoding[:, :i+1, :]
-                    tgt_mask = self.generate_square_subsequent_mask(i+1)
-                    out = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask)
-                    if i != self.target_seq_len-1:
-                        candidate_output = out[:, [-1], :]
-                        candidate_output_actual_value = self.output_projection(candidate_output)
-                        candidate_output_actual_value[:,:,y_target.shape[2]:] = u_future[:,[i],:] # 'correct' the u values in predicted output
-                        out_new = self.target_projection(candidate_output_actual_value)
-                        output[:, i, :] = out_new[:, -1, :]
-            else:
-                raise ValueError('In forward() of TransformerAR, thew keywork <mode> received an unrecognized keyword; must be <train> or <test>.')
+            # For testing, use autoregression
+            output = torch.zeros((src.size(0), self.target_seq_len, self.model_dim), dtype=self.dtype, device=src.device)
+            for i in range(self.target_seq_len):
+                tgt = output[:, :i+1, :]
+                tgt += self.positional_encoding[:, :i+1, :]
+                tgt_mask = self.generate_square_subsequent_mask(i+1)
+                out = self.transformer_decoder(tgt, memory, tgt_mask=tgt_mask)
+                if i != self.target_seq_len-1:
+                    candidate_output = out[:, [-1], :]
+                    candidate_output_actual_value = self.output_projection(candidate_output)
+                    candidate_output_actual_value[:,:,y_target.shape[2]:] = u_future[:,[i],:] # 'correct' the u values in predicted output
+                    out_new = self.target_projection(candidate_output_actual_value)
+                    output[:, i, :] = out_new[:, -1, :]
 
         return self.output_projection(output[:,:-1,:])[:,:,:y_target.shape[2]]
