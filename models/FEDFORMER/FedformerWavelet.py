@@ -9,6 +9,9 @@ from typing import List, Tuple
 from scipy.special import eval_legendre
 from sympy import Poly, legendre, Symbol, chebyshevt
 
+# paper - https://arxiv.org/pdf/2201.12740
+# code adapted from - https://github.com/MAZiqing/FEDformer/blob/master/models/FEDformer.py
+
 def legendreDer(k, x):
     def _legendre(k, x):
         return (2*k+1) * eval_legendre(k, x)
@@ -852,6 +855,7 @@ class FedformerWaveletBase(nn.Module):
     ):
         
         super(FedformerWaveletBase, self).__init__()
+        
         self.mode_select = mode_select
         self.modes = modes
         self.seq_len = seq_len

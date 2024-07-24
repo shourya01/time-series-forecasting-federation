@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from math import log, sqrt
 import numpy as np
 
+# code adapted from - https://github.com/MAZiqing/FEDformer/blob/master/models/Transformer.py
+
 class TriangularCausalMask():
     def __init__(self, B, L, device="cpu"):
         mask_shape = [B, 1, L, L]

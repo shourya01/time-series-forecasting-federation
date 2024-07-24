@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import numpy as np
 from math import sqrt, log
 
+# paper: https://arxiv.org/abs/2012.07436
+# code adapted from: https://github.com/MAZiqing/FEDformer/blob/master/models/Informer.py
+
 class ProbMask():
     def __init__(self, B, H, L, index, scores, device="cpu"):
         _mask = torch.ones(L, scores.shape[-1], dtype=torch.bool).to(device).triu(1)
