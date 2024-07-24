@@ -421,6 +421,7 @@ class Informer(nn.Module):
         d_layers: int = 2,
         d_ff: int = 512,
         activation: str = 'gelu',
+        dropout: float = 0.1,
         dtype: torch.dtype = torch.float32
     ):
         
@@ -449,6 +450,7 @@ class Informer(nn.Module):
             d_layers = d_layers,
             d_ff = d_ff,
             activation = activation,
+            dropout = dropout,
             dtype = dtype
         )
                 
