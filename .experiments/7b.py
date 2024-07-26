@@ -24,13 +24,52 @@ sys.path.insert(0,'/home/sbose/time-series-forecasting-federation')
 from files_for_appfl.comstock_dataloader import get_comstock
 from files_for_appfl.tsf_loss import TSFLoss
 from files_for_appfl.tsf_metric import mape_metric
+
+# Different models
+from models.LSTM.LSTMFCDecoder import LSTMFCDecoder
 from models.LSTM.LSTMAR import LSTMAR
+from models.DARNN.DARNN import DARNN
+from models.TRANSFORMER.TransformerAR import TransformerAR
+from models.TRANSFORMER.Transformer import Transformer
+from models.LOGTRANS.LogTransAR import LogTransAR
+from models.INFORMER.Informer import Informer
+from models.AUTOFORMER.Autoformer import Autoformer
+from models.FEDFORMER.FedformerWavelet import FedformerWavelet
+from models.FEDFORMER.FedformerFourier import FedformerFourier
+from models.CROSSFORMER.Crossformer import Crossformer
 
 ## read arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--dataset", type=str, default="ComStock")
+
+## model and metric
+parser.add_argument("--model",
+                    choices=[
+                        'lstm_fc',
+                        'lstm_ar',
+                        'darnn',
+                        'transformer_ar',
+                        'transformer',
+                        'logtrans_ar',
+                        'informer',
+                        'autoformer',
+                        'fedformer_wavelet',
+                        'fedformer_fourier',
+                        'crossformer'
+                    ],
+                    default='lstm_ar')
+parser.add_argument("--dtype",
+                    choices=[
+                        'torch.float32',
+                        'torch.float64'
+                    ],
+                    default='torch.float32')
+
+## lookahead and lookback
+parser.add_argument("--lookback", type=int, default=12)
+parser.add_argument("--lookahead", type=int, default=8)
 
 ## mpi algorithm to run
 parser.add_argument('--mpi_type', choices=['sync', 'nosync'], default='nosync')
@@ -61,6 +100,23 @@ parser.add_argument("--save_frequency", type=int, default=5)
 
 ## parse
 args = parser.parse_args()
+
+# -----
+# Dict for choosing model
+# -----
+model_name_dict = {
+    'lstm_fc':LSTMFCDecoder,
+    'lstm_ar':LSTMAR,
+    'darnn':DARNN,
+    'transformer_ar':TransformerAR,
+    'transformer':Transformer,
+    'logtrans_ar':LogTransAR,
+    'informer':Informer,
+    'autoformer':Autoformer,
+    'fedformer_wavelet':FedformerWavelet,
+    'fedformer_fourier':FedformerFourier,
+    'crossformer':Crossformer
+}
     
 # -----
 # Hasing function
@@ -114,7 +170,7 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
     # Print:
     if comm_rank == 0:
         sync_kw = 'synchronously' if args.mpi_type == 'sync' else 'non-synchronously'
-        print(f"\n\n-----\nCarrying out experiment ID {experimentID} with {args.num_clients} clients.\nEvaluate test set status is: {args.do_validation}.\nRunning MPI {sync_kw}.\n-----\n")
+        print(f"\n\n-----\nCarrying out experiment ID {experimentID} with model {args.model} and {args.num_clients} clients.\nEvaluate test set status is: {args.do_validation}.\nRunning MPI {sync_kw}.\n-----\n")
     
     # configuration
     cfg = OmegaConf.structured(Config)
@@ -136,23 +192,27 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
     ## outputs
     cfg.use_tensorboard = False
     cfg.save_model_state_dict = False
-    cfg.output_dirname = base_dir + "/.logs" + f"/outputs_{args.dataset}_{args.num_clients}clients_{args.server}_{args.num_epochs}epochs_validation_{args.do_validation}_expID_{experimentID}"
+    cfg.output_dirname = base_dir + "/.logs" + f"/outputs_{args.model}_{args.num_clients}clients_{args.server}_{args.num_epochs}epochs_validation_{args.do_validation}_expID_{experimentID}"
     
     ## User-defined model
-    model = LSTMAR(
+    model = model_name_dict[args.model](
         x_size = 6,
         y_size = 1,
         u_size = 2,
         s_size = 7,
-        lookback = 8,
-        lookahead = 4   
+        lookback = args.lookback,
+        lookahead = args.lookahead,
+        dtype = eval(args.dtype)
     )   
     loss_fn = TSFLoss()
     metric = mape_metric
     
     ## User-defined data
     train_datasets, test_datasets = get_comstock(
-        num_bldg = args.num_clients
+        num_bldg = args.num_clients,
+        lookback = args.lookback,
+        lookahead = args.lookahead,
+        dtype = eval(args.dtype)
     )
     
     ## Disable validation

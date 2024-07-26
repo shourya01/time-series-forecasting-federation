@@ -297,7 +297,7 @@ class CrossformerBase(nn.Module):
     def __init__(self, data_dim, in_len, out_len, seg_len, win_size = 4,
                 factor=10, d_model=512, d_ff = 1024, n_heads=8, e_layers=3, 
                 dropout=0.1, baseline = False, 
-                device=torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu'), 
+                device=torch.device('cpu'), 
                 dtype=torch.float32):
         super(CrossformerBase, self).__init__()
         self.data_dim = data_dim
