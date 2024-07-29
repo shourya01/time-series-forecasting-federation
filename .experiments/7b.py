@@ -37,6 +37,7 @@ from models.AUTOFORMER.Autoformer import Autoformer
 from models.FEDFORMER.FedformerWavelet import FedformerWavelet
 from models.FEDFORMER.FedformerFourier import FedformerFourier
 from models.CROSSFORMER.Crossformer import Crossformer
+from models.XLSTM.mLSTM import mLSTM
 
 ## read arguments
 parser = argparse.ArgumentParser()
@@ -57,7 +58,8 @@ parser.add_argument("--model",
                         'autoformer',
                         'fedformer_wavelet',
                         'fedformer_fourier',
-                        'crossformer'
+                        'crossformer',
+                        'mlstm'
                     ],
                     default='lstm_ar')
 parser.add_argument("--dtype",
@@ -90,7 +92,7 @@ parser.add_argument("--num_local_epochs", type=int, default=2)
 parser.add_argument("--do_validation", action="store_true")
 
 ## server
-parser.add_argument("--server", type=str, default="ServerFedAvg")
+parser.add_argument("--server", type=str, default="ServerFedAdam")
 parser.add_argument("--num_epochs", type=int, default=5)
 parser.add_argument("--server_lr", type=float, default=0.1)
 
@@ -100,6 +102,27 @@ parser.add_argument("--save_frequency", type=int, default=5)
 
 ## parse
 args = parser.parse_args()
+
+# -----
+# Function to determine if datasets are equal
+# -----
+def are_any_datasets_equal(datasets):
+    n = len(datasets)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if len(datasets[i]) != len(datasets[j]):
+                continue
+            equal = all(compare_items(datasets[i][k], datasets[j][k]) for k in range(len(datasets[i])))
+            if equal:
+                return True
+    return False
+
+def compare_items(item1, item2):
+    inp1, out1 = item1
+    inp2, out2 = item2
+    inp_res = all(torch.equal(i1,i2) for i1,i2 in zip(inp1,inp2))
+    out_res = all(torch.equal(i1,i2) for i1,i2 in zip(out1,out2))
+    return inp_res and out_res
 
 # -----
 # Dict for choosing model
@@ -115,7 +138,8 @@ model_name_dict = {
     'autoformer':Autoformer,
     'fedformer_wavelet':FedformerWavelet,
     'fedformer_fourier':FedformerFourier,
-    'crossformer':Crossformer
+    'crossformer':Crossformer,
+    'mlstm':mLSTM
 }
     
 # -----
@@ -192,7 +216,7 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
     ## outputs
     cfg.use_tensorboard = False
     cfg.save_model_state_dict = False
-    cfg.output_dirname = base_dir + "/.logs" + f"/outputs_{args.model}_{args.num_clients}clients_{args.server}_{args.num_epochs}epochs_validation_{args.do_validation}_expID_{experimentID}"
+    cfg.output_dirname = base_dir + "/.logs" + f"/outputs_{args.model}_{args.num_clients}clients_{args.server}_{args.num_epochs}epochs_validation_{args.do_validation}_mpi_{args.mpi_type}_expID_{experimentID}"
     
     ## User-defined model
     model = model_name_dict[args.model](
@@ -214,6 +238,28 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
         lookahead = args.lookahead,
         dtype = eval(args.dtype)
     )
+    
+    ##
+    
+    ## Split datasets
+    if comm_rank == 0:
+        test_dset = EmptyDataset()
+    else:
+        if not args.do_validation:
+            test_dset = EmptyDataset()
+        else:
+            if mpi_alg == rms:
+                test_dset = test_datasets[comm_rank-1]
+            else:
+                test_dset = test_datasets
+                
+    ## If server process, ensure no test datasets are the same
+    if comm_rank == 0:
+        res = are_any_datasets_equal(test_datasets)
+        if res:
+            print(f"\n---\nDetected that test datasets are equal!\n---\n")
+        else:
+            print(f"\n---\nAll test datasets are unique!\n---\n")
     
     ## Disable validation
     if not args.do_validation:
@@ -239,7 +285,7 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
             model,
             loss_fn,
             args.num_clients,
-            EmptyDataset(),
+            test_dset,
             args.dataset,
             metric,
         )
@@ -251,11 +297,10 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
             'loss_fn': loss_fn,
             'num_clients': args.num_clients,
             'train_data': train_datasets,
-            'test_data': test_datasets if args.do_validation else EmptyDataset(),
+            'test_data': test_dset,
             'metric': metric
         }
-        kwargs_client_sync = {k:v for k,v in kwargs_client.items() if (k != 'num_clients' and k != 'test_data')}
-        kwargs_client_sync['test_data'] = train_datasets[comm_rank-1] if args.do_validation else EmptyDataset()
+        kwargs_client_sync = {k:v for k,v in kwargs_client.items() if k!='num_clients'}
         if mpi_alg == rm:
             alg_name = 'rm.run_client'
             eval(alg_name)(**kwargs_client)

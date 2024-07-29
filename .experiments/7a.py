@@ -155,6 +155,18 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
         num_bldg = args.num_clients
     )
     
+    ## Split datasets
+    if comm_rank == 0:
+        test_dset = EmptyDataset()
+    else:
+        if not args.do_validation:
+            test_dset = EmptyDataset()
+        else:
+            if mpi_alg == rms:
+                test_dset = test_datasets[comm_rank-1]
+            else:
+                test_dset = test_datasets
+    
     ## Disable validation
     if not args.do_validation:
         cfg.validation = False
@@ -165,7 +177,6 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
         cfg.save_model_state_dict = True
         cfg.save_model_dirname = cfg.output_dirname
         cfg.checkpoints_interval = args.save_frequency
-        
     
     ## Running
     if comm_rank == 0:
@@ -179,7 +190,7 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
             model,
             loss_fn,
             args.num_clients,
-            EmptyDataset(),
+            test_dset,
             args.dataset,
             metric,
         )
@@ -191,11 +202,10 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
             'loss_fn': loss_fn,
             'num_clients': args.num_clients,
             'train_data': train_datasets,
-            'test_data': test_datasets if args.do_validation else EmptyDataset(),
+            'test_data': test_dset,
             'metric': metric
         }
-        kwargs_client_sync = {k:v for k,v in kwargs_client.items() if (k != 'num_clients' and k != 'test_data')}
-        kwargs_client_sync['test_data'] = train_datasets[comm_rank-1] if args.do_validation else EmptyDataset()
+        kwargs_client_sync = {k:v for k,v in kwargs_client.items() if k!='num_clients'}
         if mpi_alg == rm:
             alg_name = 'rm.run_client'
             eval(alg_name)(**kwargs_client)
