@@ -31,7 +31,7 @@ from models.LSTM.LSTMAR import LSTMAR
 from models.DARNN.DARNN import DARNN
 from models.TRANSFORMER.TransformerAR import TransformerAR
 from models.TRANSFORMER.Transformer import Transformer
-from models.LOGTRANS.LogTransAR import LogTransAR
+from models.LOGTRANS.LogTrans import LogTrans
 from models.INFORMER.Informer import Informer
 from models.AUTOFORMER.Autoformer import Autoformer
 from models.FEDFORMER.FedformerWavelet import FedformerWavelet
@@ -53,7 +53,7 @@ parser.add_argument("--model",
                         'darnn',
                         'transformer_ar',
                         'transformer',
-                        'logtrans_ar',
+                        'logtrans',
                         'informer',
                         'autoformer',
                         'fedformer_wavelet',
@@ -134,7 +134,7 @@ model_name_dict = {
     'darnn':DARNN,
     'transformer_ar':TransformerAR,
     'transformer':Transformer,
-    'logtrans_ar':LogTransAR,
+    'logtrans':LogTrans,
     'informer':Informer,
     'autoformer':Autoformer,
     'fedformer_wavelet':FedformerWavelet,
