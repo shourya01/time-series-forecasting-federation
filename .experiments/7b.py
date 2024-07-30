@@ -71,7 +71,7 @@ parser.add_argument("--dtype",
 
 ## lookahead and lookback
 parser.add_argument("--lookback", type=int, default=12)
-parser.add_argument("--lookahead", type=int, default=8)
+parser.add_argument("--lookahead", type=int, default=4)
 
 ## mpi algorithm to run
 parser.add_argument('--mpi_type', choices=['sync', 'nosync'], default='nosync')
@@ -79,7 +79,7 @@ parser.add_argument('--mpi_type', choices=['sync', 'nosync'], default='nosync')
 ## clients
 parser.add_argument("--num_clients", type=int, default=-1)
 parser.add_argument("--client_optimizer", type=str, default="Adam")
-parser.add_argument("--client_lr", type=float, default=3e-3)
+parser.add_argument("--client_lr", type=float, default=5e-4)
 parser.add_argument(
     "--local_train_pattern",
     type=str,
@@ -92,7 +92,7 @@ parser.add_argument("--num_local_epochs", type=int, default=2)
 parser.add_argument("--do_validation", action="store_true")
 
 ## server
-parser.add_argument("--server", type=str, default="ServerFedAdam")
+parser.add_argument("--server", type=str, default="ServerFedAvg")
 parser.add_argument("--num_epochs", type=int, default=5)
 parser.add_argument("--server_lr", type=float, default=0.1)
 
@@ -114,6 +114,7 @@ def are_any_datasets_equal(datasets):
                 continue
             equal = all(compare_items(datasets[i][k], datasets[j][k]) for k in range(len(datasets[i])))
             if equal:
+                print(f"Equality detected between datasets of clients {i+1} and {j+1}.")
                 return True
     return False
 
@@ -239,7 +240,13 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
         dtype = eval(args.dtype)
     )
     
-    ##
+    ## If server process, ensure no test datasets are the same
+    if comm_rank == 0:
+        res = are_any_datasets_equal(test_datasets)
+        if res:
+            print(f"\n---\nDetected that test datasets are equal!\n---\n")
+        else:
+            print(f"\n---\nAll test datasets are unique!\n---\n")
     
     ## Split datasets
     if comm_rank == 0:
@@ -252,14 +259,6 @@ def main(comm, comm_rank, comm_size, experimentID, base_dir):
                 test_dset = test_datasets[comm_rank-1]
             else:
                 test_dset = test_datasets
-                
-    ## If server process, ensure no test datasets are the same
-    if comm_rank == 0:
-        res = are_any_datasets_equal(test_datasets)
-        if res:
-            print(f"\n---\nDetected that test datasets are equal!\n---\n")
-        else:
-            print(f"\n---\nAll test datasets are unique!\n---\n")
     
     ## Disable validation
     if not args.do_validation:

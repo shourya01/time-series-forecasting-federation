@@ -4,7 +4,7 @@
 # - a text file containing multiple lines, each line having data <districtID,num_buildings>
 # (argonne users with access, find the same at "/lcrc/project/NEXTGENOPT/NREL_COMSTOCK_DATA/client_count.txt")
 
-import os, sys
+import sys
 import numpy as np
 from typing import Union, List, Tuple
 import torch
@@ -51,6 +51,7 @@ def get_comstock(
             cur_district_building_idx = 0
         data_y_s = np.load(bldg_data_dir+f'/{datafiles[cur_district_idx][0]}_data.npz')
         data_x_u = np.load(bldg_data_dir+f'/{datafiles[cur_district_idx][0]}_weather.npz')
+        cur_district_building_idx += 1
         
         dset = LFDataset(
             data_y_s = data_y_s,
