@@ -5,6 +5,21 @@ from typing import Union, List, Tuple
 
 # Autoregressive LSTM
 
+# Function to parse inputs
+
+def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
+    
+    split_sizes = [y_size,x_size,u_size,s_size,y_size,u_size]
+    y_past, x_past, u_past, s_past, y_future, u_future = torch.split(inp,split_sizes,dim=-1)
+    
+    if lookback>lookahead:
+        y_future, u_future = y_future[:,:lookahead,:], u_future[:,:lookahead,:]
+    if lookahead>lookback:
+        y_past, x_past, u_past, s_past = y_past[:,:lookback,:], x_past[:,:lookback,:], u_past[:,:lookback,:], s_past[:,:lookback,:]
+        
+    # return in the format
+    return y_past, x_past, u_past, s_past, u_future, y_future
+
 class LSTMAR(nn.Module):
     
     def __init__(
@@ -69,8 +84,10 @@ class LSTMAR(nn.Module):
             
         )
         
-        # lookahead
+        # lookahead, lookback, and sizes
         self.lookahead = lookahead
+        self.lookback = lookback
+        self.y_size, self.x_size, self.u_size, self.s_size = y_size, x_size, u_size, s_size
         
     def init_h_c_(self, B, device):
         
@@ -83,7 +100,7 @@ class LSTMAR(nn.Module):
     def forward(self,x):
         
         # extract components
-        y_past, x_past, u_past, s_past, u_future, _ = x
+        y_past, x_past, u_past, s_past, u_future, _ = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
         inp = torch.cat([y_past,x_past,u_past,s_past],dim=2)
         B, dev = inp.shape[0], inp.device
         

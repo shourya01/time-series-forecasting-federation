@@ -69,8 +69,3 @@ def get_comstock(
         test_dsets.append(d_test)
         
     return train_dsets, test_dsets
-
-    
-    
-    
-    

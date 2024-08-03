@@ -26,10 +26,8 @@ from files_for_appfl.tsf_loss import TSFLoss
 from files_for_appfl.tsf_metric import mape_metric
 
 # Different models
-from models.LSTM.LSTMFCDecoder import LSTMFCDecoder
 from models.LSTM.LSTMAR import LSTMAR
 from models.DARNN.DARNN import DARNN
-from models.TRANSFORMER.TransformerAR import TransformerAR
 from models.TRANSFORMER.Transformer import Transformer
 from models.LOGTRANS.LogTrans import LogTrans
 from models.INFORMER.Informer import Informer
@@ -48,7 +46,6 @@ parser.add_argument("--dataset", type=str, default="ComStock")
 ## model and metric
 parser.add_argument("--model",
                     choices=[
-                        'lstm_fc',
                         'lstm_ar',
                         'darnn',
                         'transformer_ar',
@@ -129,10 +126,8 @@ def compare_items(item1, item2):
 # Dict for choosing model
 # -----
 model_name_dict = {
-    'lstm_fc':LSTMFCDecoder,
     'lstm_ar':LSTMAR,
     'darnn':DARNN,
-    'transformer_ar':TransformerAR,
     'transformer':Transformer,
     'logtrans':LogTrans,
     'informer':Informer,

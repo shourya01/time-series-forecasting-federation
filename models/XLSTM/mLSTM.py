@@ -3,6 +3,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 from math import sqrt
 
+# xLSTM paper: https://arxiv.org/abs/2405.04517
+
+# Function to parse inputs
+
+def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
+    
+    split_sizes = [y_size,x_size,u_size,s_size,y_size,u_size]
+    y_past, x_past, u_past, s_past, y_future, u_future = torch.split(inp,split_sizes,dim=-1)
+    
+    if lookback>lookahead:
+        y_future, u_future = y_future[:,:lookahead,:], u_future[:,:lookahead,:]
+    if lookahead>lookback:
+        y_past, x_past, u_past, s_past = y_past[:,:lookback,:], x_past[:,:lookback,:], u_past[:,:lookback,:], s_past[:,:lookback,:]
+        
+    # return in the format
+    return y_past, x_past, u_past, s_past, u_future, y_future
+
 class BlockDiagonalLinear(nn.Module):
     def __init__(self, dim, block_size=4, scale=1, **kwargs):
         super(BlockDiagonalLinear, self).__init__()
@@ -187,6 +204,7 @@ class mLSTM(nn.Module):
         self.out_proj = nn.Linear(model_dim,out_features, dtype=dtype)
         
         self.lookback, self.lookahead = lookback, lookahead
+        self.x_size, self.y_size, self.u_size, self.s_size = x_size, y_size, u_size, s_size
         self.model_dim, self.num_heads, self.dtype = model_dim, num_heads, dtype
         
     def _init_states(self, BS, device):
@@ -199,7 +217,7 @@ class mLSTM(nn.Module):
     def forward(self, x):
         
         # extract components
-        y_past, x_past, u_past, s_past, u_future, _ = x
+        y_past, x_past, u_past, s_past, u_future, _ = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
         inp = torch.cat([y_past,x_past,u_past,s_past], dim=-1)
         BS = inp.shape[0]
         

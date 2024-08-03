@@ -12,6 +12,27 @@ import math
 # paper:
 # https://arxiv.org/abs/1706.03762
 
+# Function to parse inputs
+
+def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
+    
+    split_sizes = [y_size,x_size,u_size,s_size,y_size,u_size]
+    y_past, x_past, u_past, s_past, y_future, u_future = torch.split(inp,split_sizes,dim=-1)
+    lookback, lookahead = y_past.shape[1], y_future.shape[1]
+    
+    # asserts to ensure the correct sizes of the data
+    assert lookback == y_past.shape[1], "Past data seq_len is wrong!"
+    assert lookahead == y_future.shape[1], "Future data seq_len is wrong!"
+    
+    if lookback>lookahead:
+        y_future, u_future = y_future[:,:lookahead,:], u_future[:,:lookahead,:]
+    if lookahead>lookback:
+        y_past, x_past, u_past, s_past = y_past[:,:lookback,:], x_past[:,:lookback,:], u_past[:,:lookback,:], s_past[:,:lookback,:]
+        
+    # return in the format
+    return y_past, x_past, u_past, s_past, u_future, y_future
+
+
 class TransformerAR(nn.Module):
     def __init__(
         self, 
@@ -37,6 +58,10 @@ class TransformerAR(nn.Module):
         target_seq_len = lookahead + 1 # for zero starting token
         self.model_dim = model_dim
         self.target_seq_len = target_seq_len
+        
+        # save important values
+        self.y_size, self.x_size, self.u_size, self.s_size = y_size, x_size, u_size, s_size
+        self.lookback, self.lookahead = lookback, lookahead
         
         # Save data type
         self.dtype = dtype
@@ -66,7 +91,8 @@ class TransformerAR(nn.Module):
     def forward(self, x):
         
         # extract data
-        y_past, x_past, u_past, s_past, u_future, y_target = x
+        y_past, x_past, u_past, s_past, u_future, y_target = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
+        # y_past, x_past, u_past, s_past, u_future, y_target = x
         
         # create relevant tensors
         src = torch.cat([y_past,x_past,u_past,s_past], dim=-1)

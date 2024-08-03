@@ -7,6 +7,21 @@ from math import sqrt, log
 # paper: https://arxiv.org/abs/2012.07436
 # code adapted from: https://github.com/MAZiqing/FEDformer/blob/master/models/Informer.py
 
+# Function to parse inputs
+
+def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
+    
+    split_sizes = [y_size,x_size,u_size,s_size,y_size,u_size]
+    y_past, x_past, u_past, s_past, y_future, u_future = torch.split(inp,split_sizes,dim=-1)
+    
+    if lookback>lookahead:
+        y_future, u_future = y_future[:,:lookahead,:], u_future[:,:lookahead,:]
+    if lookahead>lookback:
+        y_past, x_past, u_past, s_past = y_past[:,:lookback,:], x_past[:,:lookback,:], u_past[:,:lookback,:], s_past[:,:lookback,:]
+        
+    # return in the format
+    return y_past, x_past, u_past, s_past, u_future, y_future
+
 class ProbMask():
     def __init__(self, B, H, L, index, scores, device="cpu"):
         _mask = torch.ones(L, scores.shape[-1], dtype=torch.bool).to(device).triu(1)
@@ -435,7 +450,7 @@ class Informer(nn.Module):
         # values to store
         self.dtype = dtype
         self.lookback, self.lookahead = lookback, lookahead
-        self.x_size, self.y_size, self.u_size = x_size, y_size, u_size
+        self.x_size, self.y_size, self.u_size, self.s_size = x_size, y_size, u_size, s_size
         
         self.informer = InformerBase(
             enc_in = enc_in,
@@ -456,7 +471,7 @@ class Informer(nn.Module):
                 
     def forward(self, x):
         
-        y_past, x_past, u_past, s_past, u_future , _ = x
+        y_past, x_past, u_past, s_past, u_future, _ = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
         enc_inp = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
         dec_inp = torch.cat([
             enc_inp[:,-(self.lookback//2):,:],

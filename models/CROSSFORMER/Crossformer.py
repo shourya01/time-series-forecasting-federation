@@ -3,6 +3,23 @@ import torch.nn as nn
 from einops import rearrange, repeat
 from math import ceil, sqrt
 
+# Crossformer paper: https://openreview.net/forum?id=vSVLM2j9eie
+
+# Function to parse inputs
+
+def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
+    
+    split_sizes = [y_size,x_size,u_size,s_size,y_size,u_size]
+    y_past, x_past, u_past, s_past, y_future, u_future = torch.split(inp,split_sizes,dim=-1)
+    
+    if lookback>lookahead:
+        y_future, u_future = y_future[:,:lookahead,:], u_future[:,:lookahead,:]
+    if lookahead>lookback:
+        y_past, x_past, u_past, s_past = y_past[:,:lookback,:], x_past[:,:lookback,:], u_past[:,:lookback,:], s_past[:,:lookback,:]
+        
+    # return in the format
+    return y_past, x_past, u_past, s_past, u_future, y_future
+
 class DSW_embedding(nn.Module):
     def __init__(self, seg_len, d_model, dtype=torch.float32):
         super(DSW_embedding, self).__init__()
@@ -375,7 +392,8 @@ class Crossformer(nn.Module):
         
         enc_in = x_size + y_size + u_size + s_size
         in_len, out_len = lookback, lookahead
-        self.y_size = y_size
+        self.lookahead, self.lookback = lookahead, lookback
+        self.x_size, self.y_size, self.u_size, self.s_size = x_size, y_size, u_size, s_size
         
         # logic to generate segemnt length
         if in_len <= 4:
@@ -389,7 +407,7 @@ class Crossformer(nn.Module):
             in_len = in_len,
             out_len = out_len,
             seg_len = seg_len,
-            win_size=win_size,
+            win_size = win_size,
             factor = factor,
             d_model = d_model,
             d_ff = d_ff,
@@ -401,7 +419,7 @@ class Crossformer(nn.Module):
         
     def forward(self,x):
         
-        y_past, x_past, u_past, s_past, _ , _ = x
+        y_past, x_past, u_past, s_past, _ , _ = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
         enc_inp = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
         
         return self.crossformer(enc_inp)[:,:,:self.y_size] # only output the y's

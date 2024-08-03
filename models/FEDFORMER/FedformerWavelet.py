@@ -12,6 +12,21 @@ from sympy import Poly, legendre, Symbol, chebyshevt
 # paper - https://arxiv.org/pdf/2201.12740
 # code adapted from - https://github.com/MAZiqing/FEDformer/blob/master/models/FEDformer.py
 
+# Function to parse inputs
+
+def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
+    
+    split_sizes = [y_size,x_size,u_size,s_size,y_size,u_size]
+    y_past, x_past, u_past, s_past, y_future, u_future = torch.split(inp,split_sizes,dim=-1)
+    
+    if lookback>lookahead:
+        y_future, u_future = y_future[:,:lookahead,:], u_future[:,:lookahead,:]
+    if lookahead>lookback:
+        y_past, x_past, u_past, s_past = y_past[:,:lookback,:], x_past[:,:lookback,:], u_past[:,:lookback,:], s_past[:,:lookback,:]
+        
+    # return in the format
+    return y_past, x_past, u_past, s_past, u_future, y_future
+
 def legendreDer(k, x):
     def _legendre(k, x):
         return (2*k+1) * eval_legendre(k, x)
@@ -986,7 +1001,7 @@ class FedformerWavelet(nn.Module):
         # values to store
         self.dtype = dtype
         self.lookback, self.lookahead = lookback, lookahead
-        self.x_size, self.y_size, self.u_size = x_size, y_size, u_size
+        self.x_size, self.y_size, self.u_size, self.s_size = x_size, y_size, u_size, s_size
         
         self.autoformer = FedformerWaveletBase(
             enc_in = enc_in,
@@ -1007,7 +1022,7 @@ class FedformerWavelet(nn.Module):
                 
     def forward(self, x):
         
-        y_past, x_past, u_past, s_past, _ , _ = x
+        y_past, x_past, u_past, s_past, _ , _ = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
         enc_inp = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
         
         return self.autoformer(enc_inp)[:,:,:self.y_size] # only output the y's
