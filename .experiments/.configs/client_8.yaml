@@ -11,5 +11,5 @@ data_configs:
 train_configs:
   device: cuda:1
   logging_id: Client8
-  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/NTVlMDMyZT_lstm_ar/client_8
+  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/YTZlZTVmMz_transformer/client_8
   logging_output_filename: result
