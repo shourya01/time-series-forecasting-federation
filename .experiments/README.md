@@ -1,3 +1,9 @@
+## init_model_run.ipynb
+
+Tests out the ComStock dataloader, and different time-series forecasting models from data from the dataloader. Tests out the capability of the model in different data types.
+
+*NOTE:* A lot of files have local filepaths. Also, the dataset is stored locally on my machine. Thus it will be difficult to independently run the script by just cloning this repo.
+
 ## 1*.py 
 
 These scripts are meant to run classical FL on a HPC. Uses ComStock dataset (downloaded remotely), multiple time-series forecasting models, and 2 GPUs. Here's the bash script used to generate the `.yaml` files and run the script (note that the script uses gRPC communication).
@@ -37,3 +43,5 @@ for model in "${MODELS[@]}"; do
     wait
 done 
 ```
+
+*NOTE:* A lot of files have local filepaths. Also, the dataset is stored locally on my machine. Thus it will be difficult to independently run the script by just cloning this repo.
