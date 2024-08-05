@@ -1,0 +1,15 @@
+comm_configs:
+  grpc_configs:
+    max_message_size: 1048576
+    server_uri: localhost:50051
+    use_ssl: false
+data_configs:
+  dataset_kwargs:
+    bldg_idx: 7
+  dataset_name: get_comstock
+  dataset_path: /home/sbose/time-series-forecasting-federation/files_for_appfl/comstock_dataloader.py
+train_configs:
+  device: cuda:1
+  logging_id: Client8
+  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/NTVlMDMyZT_lstm_ar/client_8
+  logging_output_filename: result
