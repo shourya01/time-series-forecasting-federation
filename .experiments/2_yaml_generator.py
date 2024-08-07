@@ -63,7 +63,7 @@ model_kwargs = {
 }
 
 # dict for the fedavg server yaml file
-fedavg_server_config = {
+fedavg_server_config = lambda num_clients: {
     'client_configs': {
         'train_configs': {
             # local trainer
@@ -107,7 +107,7 @@ fedavg_server_config = {
     'server_configs': {
         'scheduler': 'SyncScheduler',
         'scheduler_kwargs': {
-            'num_clients': args.num_clients,
+            'num_clients': num_clients,
             'same_init_model': True
         },
         'aggregator': 'FedAvgAggregator',
@@ -121,7 +121,7 @@ fedavg_server_config = {
         'logging_output_filename': 'result',
         'comm_configs': {
             'grpc_configs': {
-                'server_uri': 'localhost:51051',
+                'server_uri': 'localhost:50051',
                 'max_message_size': 1048576,
                 'use_ssl': False
             }
@@ -130,7 +130,8 @@ fedavg_server_config = {
 }
 
 # lambda function for client yaml files
-client_config = lambda cid, device, numNodes: {
+client_config = lambda cid, device, nodeID: {
+    'client_id': f'Client{cid+1}',
     'train_configs': {
         'device': device,
         'logging_id': f'Client{cid+1}',
@@ -146,7 +147,7 @@ client_config = lambda cid, device, numNodes: {
     },
     'comm_configs': {
         'grpc_configs': {
-            'server_uri': f'localhost:{int(51051+cid+numNodes+1)}',
+            'server_uri': f'localhost:{int(50051+nodeID+1)}',
             'max_message_size': 1048576,
             'use_ssl': False
         }
@@ -167,12 +168,12 @@ node_config = lambda nodeID, num_clients: {
     'comm_configs': {
         'grpc_configs': {
             'connect': {
-                'server_uri': 'localhost:51051',
+                'server_uri': 'localhost:50051',
                 'max_message_size': 1048576,
                 'use_ssl': False
             },
             'serve': {
-                'server_uri': f'localhost:{int(51051+nodeID+1)}',
+                'server_uri': f'localhost:{int(50051+nodeID+1)}',
                 'max_message_size': 1048576,
                 'use_ssl': False
             }
@@ -196,7 +197,7 @@ if __name__ == "__main__":
         # couple hfl node logic with gpu assignment logic
         for sidx, split in enumerate(device_splits):
             with open(os.path.join(config_path,f'node_{sidx+1}.yaml'),'w') as file:
-                yaml.dump(node_config(sidx,num_clients),file)
+                yaml.dump(node_config(sidx,split.size),file)
         for cid in range(num_clients):
             for sidx, split in enumerate(device_splits):
                 if cid in split:
@@ -215,8 +216,8 @@ if __name__ == "__main__":
     # generate and save the yaml files
     # server
     with open(os.path.join(config_path,'server.yaml'),'w') as file:
-        yaml.dump(fedavg_server_config,file)
+        yaml.dump(fedavg_server_config(torch.cuda.device_count()),file)
     # clients 
     for cid in range(num_clients):
         with open(os.path.join(config_path,f'client_{cid+1}.yaml'),'w') as file:
-            yaml.dump(client_config(cid,devices[cid],torch.cuda.device_count()),file)
+            yaml.dump(client_config(cid,devices[cid],nodes[cid]),file)
