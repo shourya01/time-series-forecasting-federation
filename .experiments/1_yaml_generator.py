@@ -18,7 +18,6 @@ parser.add_argument("--model",
                     choices=[
                         'lstm_ar',
                         'darnn',
-                        'transformer_ar',
                         'transformer',
                         'logtrans',
                         'informer',
@@ -36,7 +35,6 @@ model_dir_dict = {
     'lstm_ar':'LSTM/LSTMAR.py',
     'darnn':'DARNN/DARNN.py',
     'transformer':'TRANSFORMER/Transformer.py',
-    'transformer_ar':'TRANSFORMER/TransformerAR.py',
     'logtrans':'LOGTRANS/LogTrans.py',
     'informer':'INFORMER/Informer.py',
     'autoformer':'AUTOFORMER/Autoformer.py',
@@ -48,7 +46,6 @@ model_name_dict = {
     'lstm_ar':'LSTMAR',
     'darnn':'DARNN',
     'transformer':'Transformer',
-    'transformer_ar':'TransformerAR',
     'logtrans':'LogTrans',
     'informer':'Informer',
     'autoformer':'Autoformer',
@@ -73,16 +70,16 @@ fedavg_server_config = {
             'trainer': 'NaiveTrainer',
             'mode': 'step',
             'num_local_steps': args.num_local_steps,
-            'optim': 'Adam',
+            'optim': 'SGD',
             'optim_args': {
-                'lr': 1e-3
+                'lr': 2e-5
             },
             # loss function
             'loss_fn_path': os.path.join(args.loss_dir,'loss.py'),
             'loss_fn_name': 'MSELoss',
             # validation
             'do_validation': True,
-            'do_pre_validation': True,
+            'do_pre_validation': False,
             'metric_path': os.path.join(args.loss_dir,'metric.py'),
             'metric_name': 'mape',
             # data loader
@@ -116,11 +113,11 @@ fedavg_server_config = {
         'aggregator': 'FedAvgAggregator',
         'aggregator_kwargs': {
             'client_weights_mode': 'equal',
-            'server_learning_rate': 0.01
+            'server_learning_rate': 1e-3
         },
         'device': 'cpu',
         'num_global_epochs': args.num_global_steps,
-        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}/server'),
+        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_classicalFL/server'),
         'logging_output_filename': 'result',
         'comm_configs': {
             'grpc_configs': {
@@ -137,7 +134,7 @@ client_config = lambda cid, device: {
     'train_configs': {
         'device': device,
         'logging_id': f'Client{cid+1}',
-        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}/client_{cid+1}'),
+        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_classicalFL/client_{cid+1}'),
         'logging_output_filename': 'result',
     },
     'data_configs': {
@@ -172,11 +169,6 @@ if __name__ == "__main__":
     else:
         for cid in range(num_clients):
             devices.append('cpu')
-            
-    # ensure that relevant directories are present
-    os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}/server'),exist_ok=True)
-    for cid in range(num_clients):
-        os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}/client_{cid+1}'),exist_ok=True)
     
     # generate and save the yaml files
     config_path = os.path.join(args.experiment_dir,'.configs')

@@ -1,7 +1,7 @@
 comm_configs:
   grpc_configs:
     max_message_size: 1048576
-    server_uri: localhost:50051
+    server_uri: localhost:51061
     use_ssl: false
 data_configs:
   dataset_kwargs:
@@ -11,5 +11,5 @@ data_configs:
 train_configs:
   device: cuda:1
   logging_id: Client8
-  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/YTZlZTVmMz_transformer/client_8
+  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/ODlhNjQ2M2_lstm_ar_HFLNoOverlap/client_8
   logging_output_filename: result
