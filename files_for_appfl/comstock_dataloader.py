@@ -4,15 +4,26 @@
 # - a text file containing multiple lines, each line having data <districtID,num_buildings>
 # (argonne users with access, find the same at "/lcrc/project/NEXTGENOPT/NREL_COMSTOCK_DATA/client_count.txt")
 
-import sys
+import sys, os
 import numpy as np
 from typing import Union, List, Tuple
 import torch
 import itertools
+import importlib
 
 # user-specific, see notice above
-sys.path.insert(0,'/home/sbose/time-series-forecasting-federation')
-from models.LFDataset import LFDataset, split_dataset
+# FUNCTION: Import function
+def import_function(file_path, function_name):
+    # Derive module name from file path
+    module_name = file_path.replace('/', '.').rstrip('.py')
+    # Load the module
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    # Access the function
+    return getattr(module, function_name)
+LFDataset = import_function('/home/sbose/time-series-forecasting-federation/models/LFDataset.py','LFDataset')
+split_dataset = import_function('/home/sbose/time-series-forecasting-federation/models/LFDataset.py','split_dataset')
 
 DEFAULT_FNAME = '/lcrc/project/NEXTGENOPT/NREL_COMSTOCK_DATA/client_count.txt'
 DEFAULT_DATA_DIR = '/lcrc/project/NEXTGENOPT/NREL_COMSTOCK_DATA/grouped'
@@ -61,6 +72,10 @@ def get_comstock(
     # load data
     data_y_s = np.load(bldg_data_dir+f'/{datafiles[district_idx][0]}_data.npz')
     data_x_u = np.load(bldg_data_dir+f'/{datafiles[district_idx][0]}_weather.npz')
+    
+    # TEMP: save data
+    os.makedirs('to_export',exist_ok=True)
+    np.savez_compressed(f'to_export/client_{bldg_idx}_lb_{lookback}.npz', data_y_s = data_y_s, data_x_u = data_x_u, clientID = bldg_in_district_idx)
     
     # create dataset
     dset = LFDataset(

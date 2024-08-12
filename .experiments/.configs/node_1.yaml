@@ -1,4 +1,10 @@
 aggregator: HFLFedAvgAggregator
+aggregator_kwargs:
+  checkpoint_dirname: /home/sbose/time-series-forecasting-federation/.logs/N2FmMWJlMm_transformer_HFLOverlap3/node_1
+  checkpoint_filename: model
+  checkpoint_interval: 1
+  do_checkpoint: true
+  server_learning_rate: 0.01
 comm_configs:
   grpc_configs:
     connect:
@@ -10,9 +16,9 @@ comm_configs:
       server_uri: localhost:50052
       use_ssl: false
 device: cpu
-logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/NzBmYWI4M2_lstm_ar_HFLNoOverlap/node_1
+logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/N2FmMWJlMm_transformer_HFLOverlap3/node_1
 logging_output_filename: result
 node_id: Node0
 scheduler: SyncScheduler
 scheduler_kwargs:
-  num_clients: 6
+  num_clients: 7

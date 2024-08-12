@@ -21,6 +21,40 @@ def parse_inputs(inp, lookback, lookahead, y_size, x_size, u_size, s_size):
     # return in the format
     return y_past, x_past, u_past, s_past, u_future, y_future
 
+def mean_stdev_normalize(tensor):
+    
+    mean = tensor.mean(dim=1, keepdim=True)
+    stdev = tensor.std(dim=1, keepdim=True)
+    zero_var_mask = stdev == 0
+    normalized_tensor = (tensor - mean) / stdev
+    normalized_tensor = normalized_tensor.masked_fill(zero_var_mask, 0.0)
+    stdev = stdev.masked_fill(zero_var_mask, 1.0)
+    mean = mean.masked_fill(zero_var_mask, 0.0)
+    
+    return normalized_tensor, mean.squeeze(2), stdev.squeeze(2)
+
+def reverse_mean_stdev_normalize(normalized_tensor, mean, stdev):
+    
+    tensor = normalized_tensor * stdev.unsqueeze(2) + mean.unsqueeze(2)
+    return tensor
+
+def mean_stdev_normalize_joint(tensor):
+
+    mean = tensor.mean(dim=(1, 2), keepdim=True)
+    stdev = tensor.std(dim=(1, 2), keepdim=True)
+    zero_var_mask = stdev == 0
+    normalized_tensor = (tensor - mean) / stdev
+    normalized_tensor = normalized_tensor.masked_fill(zero_var_mask, 0.0)
+    stdev = stdev.masked_fill(zero_var_mask, 1.0)
+    mean = mean.masked_fill(zero_var_mask, 0.0)
+    
+    return normalized_tensor, mean.squeeze(), stdev.squeeze()
+
+def normalize_with_given_stats(tensor, mean, stdev):
+
+    normalized_tensor = (tensor - mean) / stdev
+    return normalized_tensor
+
 class TriangularCausalMask():
     def __init__(self, B, L, device="cpu"):
         mask_shape = [B, 1, L, L]
@@ -380,6 +414,17 @@ class Transformer(nn.Module):
     def forward(self, x):
         
         y_past, x_past, u_past, s_past, u_future, _ = parse_inputs(x,self.lookback,self.lookahead,self.y_size,self.x_size,self.u_size,self.s_size)
+        
+        # normalize
+        y_past, y_mean, y_stdev = mean_stdev_normalize(y_past)
+        x_past, _, _ = mean_stdev_normalize(x_past)
+        s_past, _, _ = mean_stdev_normalize_joint(s_past)
+        
+        # u normalization
+        _, u_mean, u_stdev = mean_stdev_normalize(torch.cat((u_past,u_future),dim=1))
+        u_past = normalize_with_given_stats(u_past, u_mean, u_stdev)
+        u_future = normalize_with_given_stats(u_future, u_mean, u_stdev)
+        
         enc_inp = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
         dec_inp = torch.cat([
             enc_inp[:,-(self.lookback//2):,:],
@@ -389,4 +434,8 @@ class Transformer(nn.Module):
         # retcon u_future into the decoder inputs
         dec_inp[:,-self.lookahead:,self.x_size+self.y_size:self.x_size+self.y_size+self.u_size] = u_future
         
-        return self.transformer(enc_inp,dec_inp)
+        # output and reverse the normalizatin
+        out = self.transformer(enc_inp,dec_inp)
+        out = reverse_mean_stdev_normalize(out, y_mean, y_stdev)
+        
+        return out

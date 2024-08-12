@@ -1,16 +1,21 @@
 client_id: Client3
 comm_configs:
   grpc_configs:
-    max_message_size: 1048576
-    server_uri: localhost:50052
-    use_ssl: false
+    connect:
+    - max_message_size: 1048576
+      server_uri: localhost:50052
+      use_ssl: false
 data_configs:
   dataset_kwargs:
     bldg_idx: 2
   dataset_name: get_comstock
   dataset_path: /home/sbose/time-series-forecasting-federation/files_for_appfl/comstock_dataloader.py
 train_configs:
+  checkpoint_dirname: /home/sbose/time-series-forecasting-federation/.logs/N2FmMWJlMm_transformer_HFLOverlap3/client_3
+  checkpoint_filename: model
+  checkpoint_interval: 1
   device: cuda:0
+  do_checkpoint: true
   logging_id: Client3
-  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/NzBmYWI4M2_lstm_ar_HFLNoOverlap/client_3
+  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/N2FmMWJlMm_transformer_HFLOverlap3/client_3
   logging_output_filename: result

@@ -85,8 +85,8 @@ fedavg_server_config = {
             # data loader
             'train_batch_size': 64,
             'val_batch_size': 64,
-            'train_data_shuffle': True,
-            'val_data_shuffle': True
+            'train_data_shuffle': False,
+            'val_data_shuffle': False
         },
         'model_configs': {
             'model_path': os.path.join(args.model_dir,model_dir_dict[args.model]),
