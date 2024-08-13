@@ -2,12 +2,21 @@ import argparse
 from omegaconf import OmegaConf
 from appfl.agent import HFLNodeAgent
 from appfl.communicator.grpc import GRPCHFLNodeServeCommunicator, GRPCHFLNodeConnectCommunicator, serve
+import numpy as np
+import torch
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--node_id', type=int, default=0)
 args = argparser.parse_args()
 
-hfl_node_agent_config = OmegaConf.load(f'/home/sbose/time-series-forecasting-federation/.experiments/.configs/node_{args.node_id+1}.yaml')
+hfl_node_agent_config = OmegaConf.load(f'/home/exx/shourya/time-series-forecasting-federation/.experiments/.configs/node_{args.node_id+1}.yaml')
+
+# # fix seeds
+# np.random.seed(args.seed)
+# torch.manual_seed(args.seed)
+# torch.cuda.manual_seed(args.seed)
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
 
 hfl_node_agent = HFLNodeAgent(hfl_node_agent_config=hfl_node_agent_config)
 connect_communicator = GRPCHFLNodeConnectCommunicator(

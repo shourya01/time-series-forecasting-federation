@@ -11,17 +11,21 @@ parser.add_argument('--num_clients', type=int, default=2)
 parser.add_argument('--num_local_steps', type=int, default=10)
 parser.add_argument('--num_global_steps', type=int, default=10)
 parser.add_argument('--overlap', type=int, default=0)
-parser.add_argument('--model_dir', type=str, default='/home/sbose/time-series-forecasting-federation/models')
-parser.add_argument('--loss_dir', type=str, default='/home/sbose/time-series-forecasting-federation/files_for_appfl')
-parser.add_argument('--log_dir', type=str, default='/home/sbose/time-series-forecasting-federation/.logs')
-parser.add_argument('--experiment_dir', type=str, default='/home/sbose/time-series-forecasting-federation/.experiments')
-parser.add_argument('--server_lr', type=float, default=1e-4)
-parser.add_argument('--client_lr', type=float, default=1e-3)
+parser.add_argument('--model_dir', type=str, default='/home/exx/shourya/time-series-forecasting-federation/models')
+parser.add_argument('--loss_dir', type=str, default='/home/exx/shourya/time-series-forecasting-federation/files_for_appfl')
+parser.add_argument('--log_dir', type=str, default='/home/exx/shourya/time-series-forecasting-federation/.logs')
+parser.add_argument('--experiment_dir', type=str, default='/home/exx/shourya/time-series-forecasting-federation/.experiments')
+parser.add_argument('--server_lr', type=float, default=1e-2)
+parser.add_argument('--client_lr', type=float, default=1e-5)
+parser.add_argument('--normalize', type=int, default=0)
+parser.add_argument('--node_replace', type=int, default=0)
+parser.add_argument('--model_dim', type=int, default=64)
 parser.add_argument("--model",
                     choices=[
                         'lstm_ar',
                         'darnn',
                         'transformer',
+                        'transformern',
                         'logtrans',
                         'informer',
                         'autoformer',
@@ -39,6 +43,7 @@ model_dir_dict = {
     'lstm_ar':'LSTM/LSTMAR.py',
     'darnn':'DARNN/DARNN.py',
     'transformer':'TRANSFORMER/Transformer.py',
+    'transformern':'TRANSFORMER/TransformerN.py',
     'logtrans':'LOGTRANS/LogTrans.py',
     'informer':'INFORMER/Informer.py',
     'autoformer':'AUTOFORMER/Autoformer.py',
@@ -50,6 +55,7 @@ model_name_dict = {
     'lstm_ar':'LSTMAR',
     'darnn':'DARNN',
     'transformer':'Transformer',
+    'transformern': 'Transformer',
     'logtrans':'LogTrans',
     'informer':'Informer',
     'autoformer':'Autoformer',
@@ -63,7 +69,8 @@ model_kwargs = {
     'u_size': 2,
     's_size': 7,
     'lookback': 12,
-    'lookahead': 4
+    'lookahead': 4,
+    'd_model': args.model_dim
 }
 
 # functions to decide splits
@@ -152,9 +159,9 @@ fedavg_server_config = lambda num_clients: {
             'metric_path': os.path.join(args.loss_dir,'metric.py'),
             'metric_name': 'mape',
             # data loader
-            'train_batch_size': 64,
-            'val_batch_size': 64,
-            'train_data_shuffle': False,
+            'train_batch_size': 32,
+            'val_batch_size': 32,
+            'train_data_shuffle': True,
             'val_data_shuffle': False
         },
         'model_configs': {
@@ -184,14 +191,14 @@ fedavg_server_config = lambda num_clients: {
             'client_weights_mode': 'equal',
             'server_learning_rate': 1,
             'do_checkpoint': args.checkpoint,
-            'checkpoint_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/server'),
+            'checkpoint_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/server'),
             'checkpoint_filename': 'model',
             'checkpoint_interval': 1,
             'replace': True
         },
         'device': 'cpu',
         'num_global_epochs': args.num_global_steps,
-        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/server'),
+        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/server'),
         'logging_output_filename': 'result',
         'comm_configs': {
             'grpc_configs': {
@@ -209,10 +216,10 @@ client_config = lambda cid, device, nodeID: {
     'train_configs': {
         'device': device,
         'logging_id': f'Client{cid+1}',
-        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/client_{cid+1}'),
+        'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/client_{cid+1}'),
         'logging_output_filename': 'result',
         'do_checkpoint': args.checkpoint,
-        'checkpoint_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/client_{cid+1}'),
+        'checkpoint_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/client_{cid+1}'),
         'checkpoint_filename': 'model',
         'checkpoint_interval': 1
     },
@@ -220,7 +227,8 @@ client_config = lambda cid, device, nodeID: {
         'dataset_path': os.path.join(args.loss_dir,'comstock_dataloader.py'),
         'dataset_name': 'get_comstock',
         'dataset_kwargs': {
-            'bldg_idx': cid
+            'bldg_idx': cid,
+            'normalize': True if args.normalize==1 else False
         }
     },
     'comm_configs': {
@@ -249,13 +257,14 @@ node_config = lambda nodeID, num_clients: {
     'aggregator': 'HFLFedAvgAggregator',
     'aggregator_kwargs': {
         'do_checkpoint': args.checkpoint,
-        'checkpoint_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/node_{nodeID+1}'),
+        'checkpoint_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/node_{nodeID+1}'),
         'checkpoint_filename': 'model',
         'checkpoint_interval': 1,
-        'server_learning_rate': args.server_lr
+        'server_learning_rate': args.server_lr,
+        'replace': True if args.node_replace==1 else False
     },
     'device': 'cpu',
-    'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/node_{nodeID+1}'),
+    'logging_output_dirname': os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/node_{nodeID+1}'),
     'logging_output_filename': 'result',
     'comm_configs': {
         'grpc_configs': {
@@ -296,22 +305,22 @@ if __name__ == "__main__":
     # dump server yamls
     with open(os.path.join(config_path,'server.yaml'),'w') as file:
         yaml.dump(fedavg_server_config(NUM_NODES),file)
-    os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/server'),exist_ok=True)
-    with open(os.path.join(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/server'),'server.yaml'),'w') as file:
+    os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/server'),exist_ok=True)
+    with open(os.path.join(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/server'),'server.yaml'),'w') as file:
         yaml.dump(fedavg_server_config(NUM_NODES),file)
         
     # dump node yamls
     for nidx,d_split in enumerate(d_splits): # runs 2 times
         with open(os.path.join(config_path,f'node_{nidx+1}.yaml'),'w') as file:
             yaml.dump(node_config(nidx,len(d_split)),file)
-        os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/node_{nidx+1}'),exist_ok=True)
-        with open(os.path.join(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/node_{nidx+1}'),f'node_{nidx+1}.yaml'),'w') as file:
+        os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/node_{nidx+1}'),exist_ok=True)
+        with open(os.path.join(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/node_{nidx+1}'),f'node_{nidx+1}.yaml'),'w') as file:
             yaml.dump(node_config(nidx,len(d_split)),file)
             
     # dump client yamls
     for cid, (device,node) in enumerate(zip(devices,nodes)):
         with open(os.path.join(config_path,f'client_{cid+1}.yaml'),'w') as file:
             yaml.dump(client_config(cid,device,node),file)
-        os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/client_{cid+1}'),exist_ok=True)
-        with open(os.path.join(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}/client_{cid+1}'),f'client_{cid+1}.yaml'),'w') as file:
+        os.makedirs(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/client_{cid+1}'),exist_ok=True)
+        with open(os.path.join(os.path.join(args.log_dir,f'{args.expID}_{args.model}_HFL{overlap_string(args.overlap)}_nodereplace_{args.node_replace}/client_{cid+1}'),f'client_{cid+1}.yaml'),'w') as file:
             yaml.dump(client_config(cid,device,node),file)

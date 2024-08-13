@@ -8,14 +8,15 @@ comm_configs:
 data_configs:
   dataset_kwargs:
     bldg_idx: 1
+    normalize: false
   dataset_name: get_comstock
-  dataset_path: /home/sbose/time-series-forecasting-federation/files_for_appfl/comstock_dataloader.py
+  dataset_path: /home/exx/shourya/time-series-forecasting-federation/files_for_appfl/comstock_dataloader.py
 train_configs:
-  checkpoint_dirname: /home/sbose/time-series-forecasting-federation/.logs/N2FmMWJlMm_transformer_HFLOverlap3/client_2
+  checkpoint_dirname: /home/exx/shourya/time-series-forecasting-federation/.logs/YTVlZ_transformern_HFLNoOverlap_nodereplace_0/client_2
   checkpoint_filename: model
   checkpoint_interval: 1
   device: cuda:0
-  do_checkpoint: true
+  do_checkpoint: false
   logging_id: Client2
-  logging_output_dirname: /home/sbose/time-series-forecasting-federation/.logs/N2FmMWJlMm_transformer_HFLOverlap3/client_2
+  logging_output_dirname: /home/exx/shourya/time-series-forecasting-federation/.logs/YTVlZ_transformern_HFLNoOverlap_nodereplace_0/client_2
   logging_output_filename: result

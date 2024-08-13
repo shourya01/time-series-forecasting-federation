@@ -22,11 +22,13 @@ def import_function(file_path, function_name):
     spec.loader.exec_module(module)
     # Access the function
     return getattr(module, function_name)
-LFDataset = import_function('/home/sbose/time-series-forecasting-federation/models/LFDataset.py','LFDataset')
-split_dataset = import_function('/home/sbose/time-series-forecasting-federation/models/LFDataset.py','split_dataset')
+LFDataset = import_function('/home/exx/shourya/time-series-forecasting-federation/models/LFDataset.py','LFDataset')
+split_dataset = import_function('/home/exx/shourya/time-series-forecasting-federation/models/LFDataset.py','split_dataset')
 
 DEFAULT_FNAME = '/lcrc/project/NEXTGENOPT/NREL_COMSTOCK_DATA/client_count.txt'
 DEFAULT_DATA_DIR = '/lcrc/project/NEXTGENOPT/NREL_COMSTOCK_DATA/grouped'
+
+ZLAB_DATA_DIR = '/home/exx/shourya/comstock_data'
 
 def get_bldg_idx(
     bldg_idx: int,
@@ -55,27 +57,29 @@ def get_comstock(
     train_test_ratio: float = 0.8,
     bldg_list_file: str = DEFAULT_FNAME, # change upon different usage
     bldg_data_dir: str = DEFAULT_DATA_DIR, # change upon different usage
-    dtype: torch.dtype = torch.float32
+    normalize: str = False, # normalize data
+    dtype: torch.dtype = torch.float32,
     ):
     
-    # load the list of files that contain our data
-    datafiles = []
-    with open(bldg_list_file,'r') as file:
-        for line in file:
-            string, number = line.strip().split(',')
-            datafiles.append((string,int(number)))
+    # # load the list of files that contain our data
+    # datafiles = []
+    # with open(bldg_list_file,'r') as file:
+    #     for line in file:
+    #         string, number = line.strip().split(',')
+    #         datafiles.append((string,int(number)))
             
-    # get indices
-    bldg_counts = [b for _,b in datafiles]
-    bldg_in_district_idx, district_idx = get_bldg_idx(bldg_idx,bldg_counts)
+    # # get indices
+    # bldg_counts = [b for _,b in datafiles]
+    # bldg_in_district_idx, district_idx = get_bldg_idx(bldg_idx,bldg_counts)
     
     # load data
-    data_y_s = np.load(bldg_data_dir+f'/{datafiles[district_idx][0]}_data.npz')
-    data_x_u = np.load(bldg_data_dir+f'/{datafiles[district_idx][0]}_weather.npz')
+    data_y_s = np.load(os.path.join(ZLAB_DATA_DIR,f'client_{bldg_idx}_lb_{lookback}_ys.npz'))
+    data_x_u = np.load(os.path.join(ZLAB_DATA_DIR,f'client_{bldg_idx}_lb_{lookback}_xu.npz'))
+    cid = int(np.load(os.path.join(ZLAB_DATA_DIR,f'client_{bldg_idx}_lb_{lookback}_ys.npz'))['clientID'])
     
-    # TEMP: save data
-    os.makedirs('to_export',exist_ok=True)
-    np.savez_compressed(f'to_export/client_{bldg_idx}_lb_{lookback}.npz', data_y_s = data_y_s, data_x_u = data_x_u, clientID = bldg_in_district_idx)
+    # # TEMP: save data
+    # os.makedirs('to_export',exist_ok=True)
+    # np.savez_compressed(f'to_export/client_{bldg_idx}_lb_{lookback}.npz', data_y_s = data_y_s, data_x_u = data_x_u, clientID = bldg_in_district_idx)
     
     # create dataset
     dset = LFDataset(
@@ -83,10 +87,12 @@ def get_comstock(
         data_x_u = data_x_u,
         lookback = lookback,
         lookahead = lookahead,
-        client_idx = bldg_in_district_idx,
+        client_idx = cid,
         idx_x = idx_x,
         idx_u = idx_u,
-        dtype = dtype
+        dtype = dtype,
+        normalize = normalize,
+        ratio = train_test_ratio
     )
     
     # split into train and test sets

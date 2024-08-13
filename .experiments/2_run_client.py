@@ -3,13 +3,22 @@ from omegaconf import OmegaConf
 from appfl.agent import ClientAgent
 from concurrent.futures import ThreadPoolExecutor
 from appfl.communicator.grpc import GRPCClientCommunicator
+import numpy as np
+import torch
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--client_id', type=int, default=0)
 argparser.add_argument('--seed', type=int, default=42)
 args = argparser.parse_args()
 
-client_agent_config = OmegaConf.load(f"/home/sbose/time-series-forecasting-federation/.experiments/.configs/client_{args.client_id+1}.yaml")
+client_agent_config = OmegaConf.load(f"/home/exx/shourya/time-series-forecasting-federation/.experiments/.configs/client_{args.client_id+1}.yaml")
+
+# # fix seeds
+# np.random.seed(args.seed)
+# torch.manual_seed(args.seed)
+# torch.cuda.manual_seed(args.seed)
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
 
 client_agent = ClientAgent(client_agent_config=client_agent_config)
 
