@@ -58,6 +58,7 @@ def import_function(file_path, function_name):
 get_comstock = import_function('/home/sbose/time-series-forecasting-federation/files_for_appfl/comstock_dataloader.py','get_comstock')
 mape = import_function('/home/sbose/time-series-forecasting-federation/files_for_appfl/metric.py','mape')
 Transformer = import_function('/home/sbose/time-series-forecasting-federation/models/TRANSFORMER/TransformerN.py','Transformer')
+loss_fn = import_function('/home/sbose/time-series-forecasting-federation/files_for_appfl/loss.py','MSELoss')()
 
 # FUNCTION: set seed globally
 def set_seed(seed=233):
@@ -167,7 +168,7 @@ def train_func(model, optimizer, train_loader, device=args.device):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.mse_loss(output, target)
+        loss = loss_fn(target, output)
         loss.backward()
         optimizer.step()
         batch = batch_idx

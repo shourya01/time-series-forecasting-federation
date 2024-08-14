@@ -45,7 +45,9 @@ class LFDataset(Dataset):
         client_idx: int,
         idx_x: Union[List,Tuple],
         idx_u: Union[List,Tuple],
-        dtype: torch.dtype = torch.float32
+        dtype: torch.dtype = torch.float32,
+        normalize: bool = True,
+        ratio: float = 0.8
     ):
         
         # sanity checks
@@ -66,23 +68,56 @@ class LFDataset(Dataset):
         # max length
         self.maxlen = self.load.shape[0] - lookback - lookahead + 1
         
+        # carry out mean-std normalization
+        self.normalize = normalize
+        self.ttr = ratio
+        self._normalize()
+        
     def __len__(self):
         
         return self.maxlen
     
     def __getitem__(self, idx):
         
-        y_past = torch.tensor(self.load[idx:idx+self.lookback][:,None], dtype=self.dtype)
-        x_past = torch.tensor(self.x[:,idx:idx+self.lookback].T, dtype=self.dtype)
-        u_past = torch.tensor(self.u[:,idx:idx+self.lookback].T, dtype=self.dtype)
-        u_future = torch.tensor(self.u[:,idx+self.lookback:idx+self.lookback+self.lookahead].T, dtype=self.dtype)
-        s_past = torch.tensor(self.static[None,:].repeat(self.lookback,axis=0), dtype=self.dtype)
+        if self.normalize:
+            self.mu_y, self.std_y = self.y_factor_mean, self.y_factor_std
+            self.mu_x, self.std_x = self.x_factor_mean, self.x_factor_std
+            self.mu_u, self.std_u = self.u_factor_mean, self.u_factor_std
+            self.mu_s, self.std_s = self.static_mean, self.static_std
+        else:
+            self.mu_y, self.std_y = 0., 1.
+            self.mu_x, self.std_x = np.zeros_like(self.x_factor_mean), np.ones_like(self.x_factor_std)
+            self.mu_u, self.std_u = np.zeros_like(self.u_factor_mean), np.ones_like(self.u_factor_std)
+            self.mu_s, self.std_s = 0., 1.
+        
+        y_past = torch.tensor(self._transform(self.load[idx:idx+self.lookback][:,None],self.mu_y,self.std_y), dtype=self.dtype)
+        x_past = torch.tensor(self._transform(self.x[:,idx:idx+self.lookback].T,self.mu_x.T,self.std_x.T), dtype=self.dtype)
+        u_past = torch.tensor(self._transform(self.u[:,idx:idx+self.lookback].T,self.mu_u.T,self.std_u.T), dtype=self.dtype)
+        u_future = torch.tensor(self._transform(self.u[:,idx+self.lookback:idx+self.lookback+self.lookahead].T,self.mu_u.T,self.std_u.T), dtype=self.dtype)
+        s_past = torch.tensor(self._transform(self.static[None,:].repeat(self.lookback,axis=0),self.mu_s,self.std_s), dtype=self.dtype)
         y_all_target = torch.tensor(self.load[idx+self.lookback:idx+self.lookback+self.lookahead][:,None], dtype=self.dtype)
+        
+        # stuff mean and variance into output
+        stuffed_mean = self.mu_y * torch.ones_like(y_all_target, dtype=self.dtype)
+        stuffed_std = self.std_y * torch.ones_like(y_all_target, dtype=self.dtype)
         
         past_cat = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
         fut_cat = torch.cat([y_all_target,u_future],dim=-1) # while we include y_all_target, it is only for teacher forcing. In a real implementation it can be replaced with zeros, since it is not used anyways when self.training is False
         
         inp = pad_and_concatenate(past_cat,fut_cat)
-        lab = y_all_target
+        lab = torch.cat((y_all_target,stuffed_mean,stuffed_std),dim=-1)
         
         return inp, lab
+    
+    def _transform(self, x, mu, std):
+        
+        return (x-mu) / std
+    
+    def _normalize(self):
+        
+        # carry out mean-std normalization and save the factors
+        
+        self.y_factor_mean, self.y_factor_std = np.mean(self.load[:int(self.ttr*self.load.size)]), np.std(self.load[:int(self.ttr*self.load.size)])
+        self.x_factor_mean, self.x_factor_std = np.mean(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True), np.std(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True)
+        self.u_factor_mean, self.u_factor_std = np.mean(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True), np.std(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True)
+        self.static_mean, self.static_std = np.mean(self.static), np.std(self.static)

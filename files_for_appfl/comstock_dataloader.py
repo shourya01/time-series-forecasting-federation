@@ -55,7 +55,8 @@ def get_comstock(
     train_test_ratio: float = 0.8,
     bldg_list_file: str = DEFAULT_FNAME, # change upon different usage
     bldg_data_dir: str = DEFAULT_DATA_DIR, # change upon different usage
-    dtype: torch.dtype = torch.float32
+    normalize: str = False, # normalize data
+    dtype: torch.dtype = torch.float32,
     ):
     
     # load the list of files that contain our data
@@ -73,10 +74,6 @@ def get_comstock(
     data_y_s = np.load(bldg_data_dir+f'/{datafiles[district_idx][0]}_data.npz')
     data_x_u = np.load(bldg_data_dir+f'/{datafiles[district_idx][0]}_weather.npz')
     
-    # TEMP: save data
-    os.makedirs('to_export',exist_ok=True)
-    np.savez_compressed(f'to_export/client_{bldg_idx}_lb_{lookback}.npz', data_y_s = data_y_s, data_x_u = data_x_u, clientID = bldg_in_district_idx)
-    
     # create dataset
     dset = LFDataset(
         data_y_s = data_y_s,
@@ -86,7 +83,9 @@ def get_comstock(
         client_idx = bldg_in_district_idx,
         idx_x = idx_x,
         idx_u = idx_u,
-        dtype = dtype
+        dtype = dtype,
+        normalize = normalize,
+        ratio = train_test_ratio
     )
     
     # split into train and test sets

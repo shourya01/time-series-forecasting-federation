@@ -1,17 +1,14 @@
 import numpy as np
 
-def mape(y_true, y_pred):
+EPSILON = 1e-5
+
+def mape(target, prediction):
     
-    assert len(y_true.shape) == len(y_pred.shape), "Cannot calculate metric when y_true and y_pred have different number of dimensions."
+    target0 = np.expand_dims(target[:,:,0], axis=-1)
+    mean, std = np.expand_dims(target[:,:,1], axis=-1), np.expand_dims(target[:,:,2], axis=-1)
+    target = std*target0 + mean
     
-    if len(y_true.shape) == 3:
-        num = np.abs( y_true[:,-1,-1] - y_pred[:,-1,-1] )
-        den = np.abs( y_true[:,-1,-1] )
-        return 100 * np.mean( num/den )   
-    else:
-        if len(y_true.shape) == 2:
-            num = np.abs( y_true[-1,-1] - y_pred[-1,-1] )
-            den = np.abs( y_true[-1,-1] )
-            return 100 * np.mean( num/den )   
-        else:
-            raise ValueError('MAPE: Wrong dimensions of input and/or output.')     
+    num = np.abs(target - prediction)
+    den = np.abs(prediction) + EPSILON
+    
+    return 100 * np.mean( num / den )
