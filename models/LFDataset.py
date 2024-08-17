@@ -47,6 +47,7 @@ class LFDataset(Dataset):
         idx_u: Union[List,Tuple],
         dtype: torch.dtype = torch.float32,
         normalize: bool = True,
+        normalize_type: str = 'minmax',
         ratio: float = 0.8
     ):
         
@@ -71,6 +72,7 @@ class LFDataset(Dataset):
         # carry out mean-std normalization
         self.normalize = normalize
         self.ttr = ratio
+        self.normalize_type = normalize_type
         self._normalize()
         
     def __len__(self):
@@ -80,44 +82,72 @@ class LFDataset(Dataset):
     def __getitem__(self, idx):
         
         if self.normalize:
-            self.mu_y, self.std_y = self.y_factor_mean, self.y_factor_std
-            self.mu_x, self.std_x = self.x_factor_mean, self.x_factor_std
-            self.mu_u, self.std_u = self.u_factor_mean, self.u_factor_std
-            self.mu_s, self.std_s = self.static_mean, self.static_std
+            if self.normalize_type == 'minmax':
+                self.fac_0_y, self.fac_1_y = self.y_factor_min, self.y_factor_max
+                self.fac_0_x, self.fac_1_x = self.x_factor_min, self.x_factor_max
+                self.fac_0_u, self.fac_1_u = self.u_factor_min, self.u_factor_max
+                self.fac_0_s, self.fac_1_s = self.static_min, self.static_max
+            else:
+                self.fac_0_y, self.fac_1_y = self.y_factor_mu, self.y_factor_std
+                self.fac_0_x, self.fac_1_x = self.x_factor_mu, self.x_factor_std
+                self.fac_0_u, self.fac_1_u = self.u_factor_mu, self.u_factor_std
+                self.fac_0_s, self.fac_1_s = self.static_mu, self.static_std
         else:
-            self.mu_y, self.std_y = 0., 1.
-            self.mu_x, self.std_x = np.zeros_like(self.x_factor_mean), np.ones_like(self.x_factor_std)
-            self.mu_u, self.std_u = np.zeros_like(self.u_factor_mean), np.ones_like(self.u_factor_std)
-            self.mu_s, self.std_s = 0., 1.
+            self.fac_0_y, self.fac_1_y = 0., 1.
+            self.fac_0_x, self.fac_1_x = np.zeros_like(self.x_factor_min), np.ones_like(self.x_factor_max)
+            self.fac_0_u, self.fac_1_u = np.zeros_like(self.u_factor_min), np.ones_like(self.u_factor_max)
+            self.fac_0_s, self.fac_1_s = 0., 1.
         
-        y_past = torch.tensor(self._transform(self.load[idx:idx+self.lookback][:,None],self.mu_y,self.std_y), dtype=self.dtype)
-        x_past = torch.tensor(self._transform(self.x[:,idx:idx+self.lookback].T,self.mu_x.T,self.std_x.T), dtype=self.dtype)
-        u_past = torch.tensor(self._transform(self.u[:,idx:idx+self.lookback].T,self.mu_u.T,self.std_u.T), dtype=self.dtype)
-        u_future = torch.tensor(self._transform(self.u[:,idx+self.lookback:idx+self.lookback+self.lookahead].T,self.mu_u.T,self.std_u.T), dtype=self.dtype)
-        s_past = torch.tensor(self._transform(self.static[None,:].repeat(self.lookback,axis=0),self.mu_s,self.std_s), dtype=self.dtype)
+        y_past = torch.tensor(self._transform(self.load[idx:idx+self.lookback][:,None],self.fac_0_y,self.fac_1_y), dtype=self.dtype)
+        x_past = torch.tensor(self._transform(self.x[:,idx:idx+self.lookback].T,self.fac_0_x.T,self.fac_1_x.T), dtype=self.dtype)
+        u_past = torch.tensor(self._transform(self.u[:,idx:idx+self.lookback].T,self.fac_0_u.T,self.fac_1_u.T), dtype=self.dtype)
+        u_future = torch.tensor(self._transform(self.u[:,idx+self.lookback:idx+self.lookback+self.lookahead].T,self.fac_0_u.T,self.fac_1_u.T), dtype=self.dtype)
+        s_past = torch.tensor(self._transform(self.static[None,:].repeat(self.lookback,axis=0),self.fac_0_s,self.fac_1_s), dtype=self.dtype)
         y_all_target = torch.tensor(self.load[idx+self.lookback:idx+self.lookback+self.lookahead][:,None], dtype=self.dtype)
         
         # stuff mean and variance into output
-        stuffed_mean = self.mu_y * torch.ones_like(y_all_target, dtype=self.dtype)
-        stuffed_std = self.std_y * torch.ones_like(y_all_target, dtype=self.dtype)
+        stuffed_min = self.fac_0_y * torch.ones_like(y_all_target, dtype=self.dtype)
+        stuffed_max = self.fac_1_y * torch.ones_like(y_all_target, dtype=self.dtype)
         
         past_cat = torch.cat([y_past,x_past,u_past,s_past],dim=-1)
         fut_cat = torch.cat([y_all_target,u_future],dim=-1) # while we include y_all_target, it is only for teacher forcing. In a real implementation it can be replaced with zeros, since it is not used anyways when self.training is False
         
         inp = pad_and_concatenate(past_cat,fut_cat)
-        lab = torch.cat((y_all_target,stuffed_mean,stuffed_std),dim=-1)
+        lab = torch.cat((y_all_target,stuffed_min,stuffed_max),dim=-1)
         
         return inp, lab
     
-    def _transform(self, x, mu, std):
+    def _transform(self, x, fac0, fac1):
         
-        return (x-mu) / std
+        if self.normalize_type == 'minmax':
+        
+            result = (x - fac0) / (fac1 - fac0)
+            
+        else:
+            
+            if self.normalize_type == 'z':
+                
+                result = (x - fac0) / fac1
+                
+            else:
+                
+                raise ValueError('normalize_type must be either of <minmax> or <z>')
+        
+        return result
     
     def _normalize(self):
         
-        # carry out mean-std normalization and save the factors
-        
-        self.y_factor_mean, self.y_factor_std = np.mean(self.load[:int(self.ttr*self.load.size)]), np.std(self.load[:int(self.ttr*self.load.size)])
-        self.x_factor_mean, self.x_factor_std = np.mean(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True), np.std(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True)
-        self.u_factor_mean, self.u_factor_std = np.mean(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True), np.std(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True)
-        self.static_mean, self.static_std = np.mean(self.static), np.std(self.static)
+        # carry out min-max normalization and save the factors
+        if self.normalize_type == 'minmax':
+            self.y_factor_min, self.y_factor_max = np.min(self.load[:int(self.ttr*self.load.size)]), np.max(self.load[:int(self.ttr*self.load.size)])
+            self.x_factor_min, self.x_factor_max = np.min(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True), np.max(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True)
+            self.u_factor_min, self.u_factor_max = np.min(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True), np.max(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True)
+            self.static_min, self.static_max = np.min(self.static), np.max(self.static)
+        else:
+            if self.normalize_type == 'z':
+                self.y_factor_mu, self.y_factor_std = np.mean(self.load[:int(self.ttr*self.load.size)]), np.std(self.load[:int(self.ttr*self.load.size)])
+                self.x_factor_mu, self.x_factor_std = np.mean(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True), np.std(self.x[:,:int(self.ttr*self.x.shape[1])], axis=1, keepdims=True)
+                self.u_factor_mu, self.u_factor_std = np.mean(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True), np.std(self.u[:,:int(self.ttr*self.u.shape[1])], axis=1, keepdims=True)
+                self.static_mu, self.static_std = np.mean(self.static), np.std(self.static)
+            else:
+                raise ValueError('normalize_type must be either of <minmax> or <z>')

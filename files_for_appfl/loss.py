@@ -8,6 +8,6 @@ class MSELoss(nn.Module):
         
     def forward(self, target, prediction):
         target0 = target[:,:,0].unsqueeze(-1)
-        mean, std = target[:,:,1].unsqueeze(-1), target[:,:,2].unsqueeze(-1)
-        target = std*target0 + mean
-        return self.loss(prediction,target)
+        min,max = target[:,:,1].unsqueeze(-1), target[:,:,2].unsqueeze(-1)
+        target0 = (target0 - min) / (max-min)
+        return self.loss(prediction,target0)
