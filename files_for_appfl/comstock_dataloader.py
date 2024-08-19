@@ -56,6 +56,7 @@ def get_comstock(
     bldg_list_file: str = DEFAULT_FNAME, # change upon different usage
     bldg_data_dir: str = DEFAULT_DATA_DIR, # change upon different usage
     normalize: str = False, # normalize data
+    normalize_type: str = 'minmax',
     dtype: torch.dtype = torch.float32,
     ):
     
@@ -85,6 +86,7 @@ def get_comstock(
         idx_u = idx_u,
         dtype = dtype,
         normalize = normalize,
+        normalize_type = normalize_type,
         ratio = train_test_ratio
     )
     

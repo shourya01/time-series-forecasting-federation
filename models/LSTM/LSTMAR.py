@@ -28,9 +28,9 @@ class LSTMAR(nn.Module):
         y_size: int,
         u_size: int,
         s_size: int,
-        hidden_size: int = 20,
+        hidden_size: int = 40,
         num_layers: int = 2,
-        fcnn_sizes: Union[List,Tuple] = (20,10,10,1),
+        fcnn_sizes: Union[List,Tuple] = (40,20,20,1),
         activation: nn.Module = nn.ReLU,
         lookback: int = 8, # this will not be used, but keeping it here for consistency
         lookahead: int = 4,
