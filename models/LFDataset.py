@@ -1,5 +1,6 @@
 # here we write some basic code which allows the creation of a dataloader
 
+import os
 import torch
 from torch.utils.data import Dataset
 import numpy as np
@@ -210,3 +211,29 @@ class LFDataset(Dataset):
     def _get_full_unnormalized_data(self):
         
         return self.y, self.x, self.u, self.s
+    
+    def _save_full_normalized_data_as_csv(self, filename):
+        
+        # the 'filename' can be an entire path ending with a valid filename
+        dirname = os.path.dirname(filename)
+        if dirname != "":
+            os.makedirs(dirname,exist_ok=True)
+        
+        ynorm = self.y_scaler.transform(self.y)
+        xnorm = self.x_scaler.transform(self.x)
+        unorm = self.u_scaler.transform(self.u)
+        snorm = self.s_scaler.transform(self.s)
+        total_data = np.concatenate((ynorm,xnorm,unorm,snorm),axis=-1)
+        
+        np.savetxt(filename, total_data, delimiter=',')
+        
+    def _save_full_unnormalized_data_as_csv(self, filename):
+        
+        # the 'filename' can be an entire path ending with a valid filename
+        dirname = os.path.dirname(filename)
+        if dirname != "":
+            os.makedirs(dirname,exist_ok=True)
+            
+        total_data = np.concatenate((self.y,self.x,self.u,self.s),axis=-1)
+        
+        np.savetxt(filename, total_data, delimiter=',')

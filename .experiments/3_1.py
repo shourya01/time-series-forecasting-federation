@@ -10,10 +10,18 @@ from tqdm import tqdm
 import itertools
 
 module_path = '/home/sbose/time-series-forecasting-federation'
-FOLDER_NAME = 'centralized_results_token512'
+FOLDER_NAME = 'centralized_results'
+        
+# configure model and other stuff
+lookahead = 4
+dtype = torch.float32
+device = 'cuda'
+num_clients = 12
+
+# Contingent imports
 sys.path.insert(0,module_path)
-from files_for_appfl.comstock_dataloader import get_comstock
-from files_for_appfl.loss import MSELoss
+from files_for_appfl.comstock_dataloader import get_comstock_shared_norm, get_comstock_range
+from files_for_appfl.loss_last import MSELoss
 from files_for_appfl.metric import mape
 from models.LSTM.LSTMAR import LSTMAR
 from models.DARNN.DARNN import DARNN
@@ -24,27 +32,8 @@ def zero_weights(model):
     for param in model.parameters():
         param.data.zero_()
         
-# configure model and other stuff
-lookahead, lookback = 4, 12
-dtype = torch.float32
-device = 'cuda'
-
-num_clients = 12
-xformer_model_kwargs = {
-    'x_size': 6,
-    'y_size': 1,
-    'u_size': 2,
-    's_size': 7,
-    'lookback': lookback,
-    'lookahead': lookahead,
-    'd_model' : 128,
-    'e_layers' : 4,
-    'd_layers' : 4,
-    'dtype' : dtype
-}
-
 # function to zero the weights for initialization
-def zero_weights(model):
+def normal_weights(model):
     for param in model.parameters():
         param.data.normal_()
         
@@ -55,9 +44,9 @@ def calculate_gradient_norm(model):
         param_norm = param.grad.data.norm(2)
         total_norm += param_norm.item() ** 2
     return total_norm ** 0.5
-  
+
 # master function for training
-def train_and_test(
+def train_and_test_transformer(
 optim_name, # pass as the name containe in a string
 custom_str = 'Transformer, FullFeatureSet, LongTrain',
 normalize = 'True',
@@ -67,10 +56,11 @@ seed = 42,
 BS = 32,
 steps = 1000,
 clip_grad = np.inf,
-ntype = 'minmax',
+ntype = 'z',
 xformer_dim = 128,
 lr = 1e-5,
-test_every = 100
+test_every = 100,
+lookback = 12
 ):
     
     # master function to train on data and produce output on test set 
@@ -91,20 +81,17 @@ test_every = 100
     
     optim = eval(optim_name)(model.parameters(), **{'lr':lr})
     loss_fn = MSELoss(ntype)
+    loss_fn_to_report = MSELoss(ntype)
     
     # get and combine datasets
-    train_set, test_set = [], []
-    for bidx in range(num_clients):
-        train, test = get_comstock(
-            bldg_idx = bidx,
-            lookback = lookback,
-            lookahead = lookahead,
-            dtype = dtype,
-            normalize = normalize,
-            normalize_type=ntype
-        )
-        train_set.append(train)
-        test_set.append(test)
+    _, train_set, test_set = get_comstock_range(
+        end_bldg_idx=num_clients,
+        lookback = lookback,
+        lookahead = lookahead,
+        dtype = dtype,
+        normalize = normalize,
+        normalize_type=ntype
+    )
     train_set, test_set = ConcatDataset(train_set), ConcatDataset(test_set)
     torch.manual_seed(seed)
     train_loader = DataLoader(train_set, batch_size=BS, shuffle=True)
@@ -112,12 +99,13 @@ test_every = 100
 
     loss_record, mape_record, norm_record = [], [], []
     elapsed = 0
-    zero_weights(model) # actually initializes to normal, doesnt zero   
+    normal_weights(model) # actually initializes to normal, doesnt zero   
     for inp, lab in (t:=tqdm(itertools.cycle(train_loader))):
     
         inp, lab = inp.to(device), lab.to(device)
         pred = model(inp)
         loss = loss_fn(lab,pred)
+        loss_to_report = loss_fn_to_report(lab,pred)
         optim.zero_grad()
         loss.backward()
         if not np.isinf(clip_grad) and clip_grad > 0:
@@ -126,7 +114,7 @@ test_every = 100
         norm_record.append(calculate_gradient_norm(model))
         optim.step()
         # scheduler.step()    
-        loss_record.append(loss.item())
+        loss_record.append(loss_to_report.item())
         elapsed += 1
         
         t.set_description(f"On experiment {custom_str}, step {elapsed}, loss is {loss.item()}.")
@@ -165,7 +153,7 @@ test_every = 100
     axs[1].set_yscale('log')
     # plot MAPEs
     mape_record = np.array(mape_record)
-    axs[2].plot(np.arange(1,mape_record.size+1),np.array(mape_record))
+    axs[2].plot(np.arange(1,mape_record.size+1),np.array(mape_record),'ko-')
     axs[2].set_xlim(1,mape_record.size)
     axs[2].set_xlabel(f'Steps x{test_every}')
     axs[2].set_ylabel(f'MAPE')
@@ -206,37 +194,39 @@ test_every = 100
     
     plt.suptitle(f'Optim={optdict[optim_name]}, BS={BS}, lr={lr}, clip={clip_grad}')
     
-    plt.savefig(f'/home/sbose/{FOLDER_NAME}/{optdict[optim_name]}_BS_{BS}_lr_{lr}_clip_{clip_grad}.pdf',format='pdf',bbox_inches='tight')
+    plt.savefig(f'/home/sbose/{FOLDER_NAME}/{optdict[optim_name]}_BS_{BS}_lr_{lr}_lookback_{lookback}_transformer_{steps}.pdf',format='pdf',bbox_inches='tight')
     plt.close()
-    torch.save(model.state_dict(),f'/home/sbose/{FOLDER_NAME}/{optdict[optim_name]}_BS_{BS}_lr_{lr}_clip_{clip_grad}.pth')
-    np.savez_compressed(f'/home/sbose/{FOLDER_NAME}/{optdict[optim_name]}_BS_{BS}_lr_{lr}_clip_{clip_grad}.npz',loss_record=loss_record, mape_record=mape_record,norm_record=norm_record,preds=preds,outputs=outputs)
+    # torch.save(model.state_dict(),f'/home/sbose/{FOLDER_NAME}/{optdict[optim_name]}_BS_{BS}_lr_{lr}_clip_{clip_grad}.pth')
+    np.savez_compressed(f'/home/sbose/{FOLDER_NAME}/{optdict[optim_name]}_BS_{BS}_lr_{lr}_lookback_{lookback}_transformer_{steps}.npz',loss_record=loss_record, mape_record=mape_record,norm_record=norm_record,preds=preds,outputs=outputs)
     
     return None
 
 if __name__ == "__main__":
     
-    opti = ['torch.optim.Adam','torch.optim.SGD']
-    batches = [64, 256, 512]
-    clip = [100, 10]
-    lrs = [1e-4, 1e-5]
-    
+    configs = [
+        [1e-4, 128, 100, 'torch.optim.SGD', 12, 20000],
+        [1e-5, 128, 100, 'torch.optim.SGD', 12, 20000],
+        [1e-4, 128, 100, 'torch.optim.SGD', 12, 100000]
+    ]
+
     os.makedirs(f'/home/sbose/{FOLDER_NAME}',exist_ok=True)
     file = open(f'/home/sbose/{FOLDER_NAME}/done.txt','a')
-    
-    for l, b, c, o in itertools.product(lrs, batches, clip, opti):
+
+    for l, b, c, o, lb, stp in configs:
         
-        train_and_test(
+        train_and_test_transformer(
             o, # pass as the name containe in a string
             'Transformer',
             normalize=True,
             display_time_idx=250,
-            ntype='z',
-            xformer_dim=512,
-            BS=b,
+            ntype = 'z',
+            xformer_dim=128,
+            BS = b,
             lr = l,
-            steps=20000,
+            steps=stp,
             test_every = 6000,
-            clip_grad= c
+            clip_grad= c,
+            lookback = lb
         )
         print(f"Finished opt={o}, lr={l}, BS={b}, Clip={c}.")
         file.write(f"'{o}',{l},{b},{c}\n")

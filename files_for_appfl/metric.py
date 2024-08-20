@@ -16,7 +16,7 @@ def mape(target, prediction, normalization_type = 'minmax'):
         else:
             raise ValueError('normalize_type must be either of <minmax> or <z>')
     
-    num = np.abs(target0 - prediction)
-    den = np.abs(target0) + EPSILON
+    num = np.abs(target0[:,-1,:] - prediction[:,-1,:])
+    den = np.abs(target0[:,-1,:]) + EPSILON
     
     return 100 * np.mean( num / den )
