@@ -205,9 +205,10 @@ num_lstm_layer = 12
 if __name__ == "__main__":
     
     configs = [
-        [1e-4, 32, 100, 'torch.optim.SGD', 12, 20000],
-        [1e-5, 32, 100, 'torch.optim.SGD', 12, 20000],
-        [1e-4, 32, 100, 'torch.optim.SGD', 12, 100000]
+        # [1e-4, 32, 100, 'torch.optim.SGD', 12, 20000],
+        # [1e-5, 32, 100, 'torch.optim.SGD', 12, 20000],
+        # [1e-4, 32, 100, 'torch.optim.SGD', 12, 200000],
+        [1e-4, 32, 100, 'torch.optim.SGD', 12, 200000]
     ]
 
     os.makedirs(f'/home/sbose/{FOLDER_NAME}',exist_ok=True)
